@@ -1,11 +1,11 @@
 # Built-in imports
 import os
+import json
 from datetime import datetime, timezone
-from typing import Annotated
 from uuid import uuid4
 
 # External imports
-from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 # Own imports
 from common.models.text_message_model import TextMessageModel
@@ -101,14 +101,18 @@ async def post_chatbot_webhook(
                 correlation_id=correlation_id,
             )
             logger.info(
-                message_item.model_dump(),
+                # message_item.model_dump(),
+                message_item.json(),  # When stabilizing Pydantic versions, change to model_dump
                 message_details="Successfully created TextMessageModel instance",
             )
         # TODO: Add other types of messages (image, voice, video, etc)
 
         # Save the message to DynamoDB
         if message_item:
-            result = dynamodb_helper.put_item(message_item.model_dump())
+            # result = dynamodb_helper.put_item(message_item.model_dump())
+            result = dynamodb_helper.put_item(
+                json.loads(message_item.json())
+            )  # TODO: update to model_dump()
             logger.debug(result, message_details="DynamoDB put_item() result")
 
         result = {"message": "ok", "details": "Received message"}

@@ -76,7 +76,10 @@ class MetaAPI:
             response = requests.post(
                 self.api_endpoint,
                 headers=self.api_headers,
-                json=message_data_model.model_dump(),
+                # json=message_data_model.model_dump(),
+                json=json.loads(
+                    message_data_model.json()
+                ),  # TODO: update to model_dump()
             )
         except Exception as e:
             self.logger.exception(
