@@ -11,7 +11,7 @@ Multi-layered Enterprise WhatsApp Chatbot solution designed for a demo Bank, lev
 ## Manual Steps (Only Once)
 
 - [WhatsApp Manual Configuration](./docs/WHATSAPP_CONFIGURATION.md)
-- TODO: AWS Manual Configuration TBD
+- [AWS Configuration](./docs/AWS_CONFIGURATION.md)
 
 ## Author 🎹
 
