@@ -4,21 +4,17 @@ import os
 # External imports
 from aws_cdk import (
     Duration,
-    aws_bedrock,
     aws_dynamodb,
     aws_iam,
     aws_lambda,
     aws_lambda_event_sources,
     aws_logs,
-    aws_opensearchserverless as oss,
     aws_ssm,
     aws_secretsmanager,
-    aws_s3,
     aws_s3_deployment as s3d,
     aws_stepfunctions as aws_sfn,
     aws_stepfunctions_tasks as aws_sfn_tasks,
     aws_apigateway as aws_apigw,
-    custom_resources as cr,
     CfnOutput,
     RemovalPolicy,
     Stack,
@@ -69,8 +65,6 @@ class ChatbotAPIStack(Stack):
         self.create_state_machine_tasks()
         self.create_state_machine_definition()
         self.create_state_machine()
-        # # TODO: Add bedrock components
-        # self.create_bedrock_components()
 
         # Generate CloudFormation outputs
         self.generate_cloudformation_outputs()
@@ -594,17 +588,16 @@ class ChatbotAPIStack(Stack):
             description="Deployment environment",
         )
 
-        if self.deployment_environment != "prod":
-            CfnOutput(
-                self,
-                "APIDocs",
-                value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.deployment_environment}/api/v1/docs",
-                description="API endpoint Docs",
-            )
+        CfnOutput(
+            self,
+            "APIDocs",
+            value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.deployment_environment}/api/v1/docs",
+            description="API endpoint Docs",
+        )
 
-            CfnOutput(
-                self,
-                "APIChatbot",
-                value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.deployment_environment}/api/v1/webhook",
-                description="API endpoint Chatbot",
-            )
+        CfnOutput(
+            self,
+            "APIChatbot",
+            value=f"https://{self.api.rest_api_id}.execute-api.{self.region}.amazonaws.com/{self.deployment_environment}/api/v1/webhook",
+            description="API endpoint Chatbot",
+        )

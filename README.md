@@ -8,6 +8,11 @@ Multi-layered Enterprise WhatsApp Chatbot solution designed for a demo Bank, lev
 
 <img src="assets/2025_01_21_RufusBank_Architecture_v3_overview.png" width=90%> <br>
 
+## Manual Steps (Only Once)
+
+- [WhatsApp Manual Configuration](./docs/WHATSAPP_CONFIGURATION.md)
+- TODO: AWS Manual Configuration TBD
+
 ## Author 🎹
 
 ### Santiago Garcia Arango
