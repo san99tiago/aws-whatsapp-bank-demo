@@ -15,8 +15,9 @@
         "api_gw_name": "rufus-wpp-dev",
         "secret_name": "/dev/aws-whatsapp-bank-demo",
         "agents_data_table_name": "rufus-bank-wpp-agents-data-dev",
-        "agents_version": "v0",
-        "comment": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
+        "comment_1": "IMPORTANT: Bedrock Agents APIs are new. When doing major changes please intentionally switch the version to enforce recreation. Example: v0 to v1",
+        "agents_version": "v1",
+        "comment_2": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
         "enable_rag": true,
         "meta_endpoint": "https://graph.facebook.com/"
       },
@@ -27,8 +28,9 @@
         "api_gw_name": "rufus-wpp-prod",
         "secret_name": "/prod/aws-whatsapp-bank-demo",
         "agents_data_table_name": "rufus-bank-wpp-agents-data-prod",
-        "agents_version": "v0",
-        "comment": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
+        "comment_1": "IMPORTANT: Bedrock Agents APIs are new. When doing major changes please intentionally switch the version to enforce recreation. Example: v0 to v1",
+        "agents_version": "v1",
+        "comment_2": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
         "enable_rag": true,
         "meta_endpoint": "https://graph.facebook.com/"
       }

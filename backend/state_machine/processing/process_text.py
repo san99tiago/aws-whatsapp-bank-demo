@@ -38,6 +38,14 @@ class ProcessText(BaseStepFunction):
             .get("S", "DEFAULT_RESPONSE")
         )
 
+        phone_number = (
+            self.event.get("input", {})
+            .get("dynamodb", {})
+            .get("NewImage", {})
+            .get("from_number", {})
+            .get("S")
+        )
+
         # # Uncomment these for troubleshooting if needed in the future :)
         # # First step is to answer an "acnowledged" message (before a real bedrock interaction)
         # self.response_message = (
@@ -45,7 +53,7 @@ class ProcessText(BaseStepFunction):
         # )
 
         # TODO: Add more complex "text processing" logic here with memory and sessions...
-        self.response_message = call_bedrock_agent(self.text)
+        self.response_message = call_bedrock_agent(self.text, phone_number)
 
         self.logger.info(f"Generated response message: {self.response_message}")
         self.logger.info("Validation finished successfully")

@@ -21,6 +21,103 @@ from aws_cdk import (
 from constructs import Construct
 
 
+# Global settings and setup
+# FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-haiku-20240307-v1:0"
+# FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-pro-v1:0"
+FOUNDATION_MODEL_CHILD_AGENTS = "amazon.nova-lite-v1:0"
+AGENT_1_INSTRUCTION = (
+    "You are the 'user-products-agent', specialized in retrieving and providing information about the user's existing bank products. "
+    "If the user requests details about their products, ensure they provide the <user_id> parameter to retrieve all relevant bank products. "
+    "Your response must strictly contain the requested user product details. Do not provide any additional information or analysis. "
+    "Always respond in the SAME language as the input, maintaining clear and concise communication."
+)
+
+AGENT_2_INSTRUCTION = (
+    "You are the 'financial-assistant-agent', specialized in providing personalized financial advice and product recommendations. "
+    "To deliver advice, you must: "
+    "1. Infer the user's RISK_PROFILE based on their existing products or directly from user input. Use only [CONSERVATIVE, MODERATE, RISKY] as valid options, converting similar terms to these canonical forms. "
+    "2. Fetch Market Insights using the <FetchMarketInsights> tool and integrate the RISK_PROFILE. "
+    "3. Cross-reference the results with the <RUFUS BANK INVESTMENT PRODUCTS> document to recommend the most suitable products or actions for the user. "
+    "Your recommendations must align with the user's <user_id> and <RISK_PROFILE>. Always provide advice tailored to their profile and preferences. "
+    "Ensure responses are in the SAME language as the input, clear, and actionable."
+)
+
+SUPERVISOR_AGENT_INSTRUCTION = (
+    "You are 'Ruffy', the supervisor agent for Rufus Bank, orchestrating interactions between specialized agents to provide the best user experience. "
+    "Introduce yourself with: 'Hi, I am Ruffy, your bank assistant for Rufus Bank. How can I help you today?' "
+    "- For questions about EXISTING PRODUCTS, route the request to the 'user-products-agent'. "
+    "- For PRODUCT RECOMMENDATIONS (any question about recommended products), follow this process: "
+    "  1. Request user product information from the 'user-products-agent' using the <user_id>. "
+    "  2. From the returned products, infer the user's RISK_PROFILE (choose from [CONSERVATIVE, MODERATE, RISKY]). "
+    "  3. Execute the 'financial-assistant-agent' to find recommended products based on the RISK_PROFILE. "
+    "- Always format fetched results clearly, embedding them within <answer></answer> tags. "
+    "- NEVER include RISK_PROFILE information in responses unless the user explicitly requests product recommendations. "
+    "- Provide structured, detailed answers while maintaining the SAME language as the input. "
+    "- If the user's request is not clear or cannot be understood, politely ask for clarification. "
+)
+
+SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = (
+    "Invoke the 'user-products-agent' to retrieve details about the user's existing bank products. "
+    "Ensure the user provides the <user_id> for accurate retrieval. "
+    "When the task involves product recommendations, first use this agent to gather user product information, then proceed to infer the RISK_PROFILE and consult the 'financial-assistant-agent'."
+)
+
+SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2 = (
+    "Invoke the 'financial-assistant-agent' for any tasks involving Market Insights or customized financial recommendations. "
+    "Ensure these recommendations align with the user's RISK_PROFILE and bank product offerings."
+)
+
+
+# AGENT_1_INSTRUCTION = (
+#     "You are the 'user-products-agent' (v1.0). You specialize in retrieving and providing information about the user's existing bank products. "
+#     "Your message format is: {'agent': 'user-products-agent', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
+#     "Actions:"
+#     "  - 'get_products': Retrieve user product details. Parameters: {'user_id': '<user_id>'}. Result: A JSON array of product objects. Each object has fields like 'product_id', 'product_name', 'balance', 'interest_rate', etc.  Example: `[{'product_id': '1', 'product_name': 'Checking Account', ...}, ...]`"
+#     "  - If the 'user_id' is missing or invalid, return {'status': 'error', 'result': 'Invalid user_id'}. "
+#     "Respond in the language specified by the 'language' parameter."
+# )
+
+# AGENT_2_INSTRUCTION = (
+#     "You are the 'financial-assistant-agent' (v1.0). You specialize in providing personalized financial advice and product recommendations. "
+#     "Your message format is: {'agent': 'financial-assistant-agent', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
+#     "Actions:"
+#     "  - 'get_recommendations': Provide product recommendations. Parameters: {'user_id': '<user_id>', 'risk_profile': '<risk_profile>'}. Result: A JSON array of recommended product objects, including 'product_id', 'product_name', 'description', 'reason', etc. Example: `[{'product_id': '3', 'product_name': 'High-Yield Savings', ...}, ...]`"
+#     "  - 'get_market_insights': Retrieve market insights. Parameters: {'risk_profile': '<risk_profile>'}. Result: A JSON object containing relevant market data. Example: `{'stock_market_trend': 'up', 'interest_rates': 'low', ...}`.  "
+#     "  - You MUST call 'get_market_insights' before 'get_recommendations'."
+#     "  - If the 'risk_profile' is not one of [CONSERVATIVE, MODERATE, RISKY], return {'status': 'error', 'result': 'Invalid risk_profile'}. "
+#     "Respond in the language specified by the 'language' parameter."
+# )
+
+# SUPERVISOR_AGENT_INSTRUCTION = (
+#     "You are 'Ruffy', the supervisor agent for Rufus Bank (v1.1). All communication uses JSON format. Your message format is: {'agent': 'ruffy', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
+#     "Workflow:"
+#     "1. Greet user: {'action': 'greet', 'result': 'Hi, I am Ruffy...'}."
+#     "2. Handle requests:"
+#     "   - 'get_products': {'action': 'get_products', 'parameters': {'user_id': '<user_id>'}, 'result': <product_info_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'user-products-agent'."
+#     "   - 'recommend_products':"
+#     "       a. Get user products: {'action': 'get_products', 'parameters': {'user_id': '<user_id>'}, 'result': <product_info_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'user-products-agent'."
+#     "       b. Infer risk profile: {'action': 'infer_risk_profile', 'parameters': {'products': <product_info_json>}, 'result': {'risk_profile': 'CONSERVATIVE'/'MODERATE'/'RISKY'}, 'status': 'success'/'error', 'language': '<language_code>'}."  # Use rules to infer from product portfolio.
+#     "       c. Get market insights: {'action': 'get_market_insights', 'parameters': {'risk_profile': <risk_profile>}, 'result': <market_insights_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
+#     "       d. Get recommendations: {'action': 'get_recommendations', 'parameters': {'user_id': '<user_id>', 'risk_profile': '<risk_profile>'}, 'result': <recommendations_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
+#     "   - 'get_market_insights': {'action': 'get_market_insights', 'parameters': {'risk_profile': '<risk_profile>'}, 'result': <market_insights_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
+#     "3. Handle errors: If an agent returns {'status': 'error'}, log the error and inform the user. For example: {'action': 'error', 'parameters': {'message': 'Failed to retrieve products'}, 'result': 'Sorry, there was an error processing your request.', 'status': 'error', 'language': '<language_code>'}."
+#     "4. Clarification: If the user request is unclear, ask clarifying questions:  {'action': 'clarification', 'result': 'Could you please clarify your request?'}."
+#     "5. Logging: Log all agent interactions, including messages, parameters, results, and errors.  This is crucial for debugging and monitoring the system."
+#     "6. Risk Profile Inference Rules (Example):"
+#     "   - If more than 50% of products are low-risk (e.g., savings accounts, CDs), risk_profile = CONSERVATIVE."
+#     "   - If more than 50% are moderate-risk (e.g., balanced mutual funds), risk_profile = MODERATE."
+#     "   - If more than 50% are high-risk (e.g., stocks, options), risk_profile = RISKY."
+#     "   - If no clear majority, risk_profile = MODERATE (default)."
+#     "Always respond in the language specified by the 'language' parameter."
+# )
+
+# SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = "Invoke the 'user-products-agent' to retrieve details about the user's existing bank products using the 'get_products' action. Ensure you provide the <user_id>. When the task involves product recommendations, first use this agent to gather user product information, then proceed to infer the RISK_PROFILE."
+
+# SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2 = "Invoke the 'financial-assistant-agent' for any tasks involving Market Insights or customized financial recommendations using the 'get_recommendations' or 'get_market_insights' actions. Ensure these recommendations align with the user's RISK_PROFILE and bank product offerings."
+
+
 class GenerativeAIStack(Stack):
     """
     Class to create the GenerativeAIStack resources, which includes the API Gateway,
@@ -503,13 +600,14 @@ class GenerativeAIStack(Stack):
             "BedrockAgentFinancialProductsV1",
             agent_name=f"{self.main_resources_name}-agent-financial-products-{self.agents_version}",
             agent_resource_role_arn=self.bedrock_agent_role.role_arn,
-            description="Agent specialized in financial products. Is able to run CRUD operations towards the user products.",
-            foundation_model="amazon.nova-lite-v1:0",
+            description="Agent specialized in financial products. Is able to run CRUD operations towards the user products and generate PDF certificates.",
+            # foundation_model="amazon.nova-lite-v1:0",
             # foundation_model="amazon.nova-pro-v1:0",
             # foundation_model="anthropic.claude-3-haiku-20240307-v1:0",
             # foundation_model="anthropic.claude-3-sonnet-20240229-v1:0",
             # foundation_model="anthropic.claude-3-5-sonnet-20240620-v1:0",
-            instruction="You are a specialized agent in giving back information about User Products for the Bank. In case that products operations are requested, they must provide the <user_id> parameter, so that you can obtain all the bank products of the user. Never give back additional information than the one requested (only the corresponding user products). Always answer in the SAME language as the input.",
+            foundation_model=FOUNDATION_MODEL_CHILD_AGENTS,
+            instruction=AGENT_1_INSTRUCTION,
             auto_prepare=True,
             action_groups=[
                 aws_bedrock.CfnAgent.AgentActionGroupProperty(
@@ -544,11 +642,9 @@ class GenerativeAIStack(Stack):
             "BedrockAgentFinancialAssistantV1",
             agent_name=f"{self.main_resources_name}-agent-financial-assistant-{self.agents_version}",
             agent_resource_role_arn=self.bedrock_agent_role.role_arn,
-            description="Agent specialized in financial advise and knows the best products that the bank offers.",
-            foundation_model="amazon.nova-lite-v1:0",
-            # foundation_model="amazon.nova-pro-v1:0",
-            # foundation_model="anthropic.claude-3-5-sonnet-20240620-v1:0",
-            instruction="You are a specialized financial assistant agent that will be able to get the current user products, and then with the help of the <FetchMarketInsights> and the knowledge base, obtain the best advise for the users. If the FetchMarketInsights details are needed, you must ask for the RISK_PROFILE, and let them choose between [CONSERVATIVE, MODERATE, RISKY], if they provide similar words, always pass them as the ones provided in list in CAPITAL case as the <risk_level> parameter. The goal is to always recommend products or actions aligned with the <user_id> and <risk_level> details, so that based on the <BANK INVESTMENT PRODUCTS> document, you can provide the best financial product for the user. Always answer in the SAME language as the input.",
+            description="Agent specialized in financial advise and knows the best products that rufus bank offers.",
+            foundation_model=FOUNDATION_MODEL_CHILD_AGENTS,
+            instruction=AGENT_2_INSTRUCTION,
             auto_prepare=True,
             action_groups=[
                 aws_bedrock.CfnAgent.AgentActionGroupProperty(
@@ -616,7 +712,6 @@ class GenerativeAIStack(Stack):
         # IMPORTANT: I create the Supervisor Agent via an AWS CustomResource because we don't have
         # ... the L1 CDK Constructs yet.  This basically uses the underlying AWS Bedrock API calls
         # TODO: Update to CDK L1 when multi-agent collaboration is supported on CF/CDK
-        supervisor_agent_instruction = "You are a specialized SUPERVISOR agent that is able to collaborate with the 'user-products-agent' (for questions related to existing user products). When a customer asks for recommded products, FIRST run the 'user-products-agent' and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the 'financial-assistant-agent' to find the recommended product based on the risk_profile. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability. Always answer in the SAME language as the input."
         supervisor_agent_description = "Supervisor Agent for the bank "
         supervisor_agent_name = (
             f"{self.main_resources_name}-create-supervisor-agent-{self.agents_version}"
@@ -648,8 +743,8 @@ class GenerativeAIStack(Stack):
                     "agentName": supervisor_agent_name,
                     "agentResourceRoleArn": self.bedrock_agent_role.role_arn,
                     "description": supervisor_agent_description,
-                    "foundationModel": "amazon.nova-lite-v1:0",
-                    "instruction": supervisor_agent_instruction,
+                    "foundationModel": FOUNDATION_MODEL_SUPERVISOR_AGENT,
+                    "instruction": SUPERVISOR_AGENT_INSTRUCTION,
                     "idleSessionTTLInSeconds": 1800,
                     "agentCollaboration": "SUPERVISOR",
                     "orchestrationType": "DEFAULT",
@@ -664,8 +759,8 @@ class GenerativeAIStack(Stack):
                     "agentName": supervisor_agent_name,
                     "agentResourceRoleArn": self.bedrock_agent_role.role_arn,
                     "description": "Supervisor Agent",
-                    "foundationModel": "amazon.nova-lite-v1:0",
-                    "instruction": supervisor_agent_instruction,
+                    "foundationModel": FOUNDATION_MODEL_SUPERVISOR_AGENT,
+                    "instruction": SUPERVISOR_AGENT_INSTRUCTION,
                     "idleSessionTTLInSeconds": 1800,
                 },
                 "physical_resource_id": cr.PhysicalResourceId.of(supervisor_agent_name),
@@ -683,7 +778,7 @@ class GenerativeAIStack(Stack):
         cr_create_supervisor_agent.grant_principal.add_to_principal_policy(
             aws_iam.PolicyStatement(
                 effect=aws_iam.Effect.ALLOW,
-                actions=["bedrock:*"],
+                actions=["bedrock:*", "iam:PassRole"],
                 resources=["*"],
             )
         )
@@ -704,7 +799,6 @@ class GenerativeAIStack(Stack):
         associate_agent_1_name = (
             f"{self.main_resources_name}-associate-agent-1-{self.agents_version}"
         )
-        associate_agent_1_instructions = "You are a specialized SUPERVISOR agent that is able to collaborate with the <user-products-agent> (for questions related to existing user products). When a customer asks for recommended products, FIRST make sure to have <user_id> and run the <user-products-agent> and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the <financial-assistant-agent> to find the recommended product based on the risk_profile. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability. Provide the answer in SPANISH and don't repeat question"
         cr_associate_agent_1 = cr.AwsCustomResource(
             self,
             associate_agent_1_name,
@@ -724,7 +818,7 @@ class GenerativeAIStack(Stack):
                         "aliasArn": self.cfn_agent_alias_1.attr_agent_alias_arn
                     },
                     "collaboratorName": self.bedrock_agent_financial_products.agent_name,
-                    "collaborationInstruction": associate_agent_1_instructions,
+                    "collaborationInstruction": SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1,
                     "relayConversationHistory": "TO_COLLABORATOR",
                 },
                 "physical_resource_id": cr.PhysicalResourceId.of(
@@ -748,7 +842,6 @@ class GenerativeAIStack(Stack):
         associate_agent_2_name = (
             f"{self.main_resources_name}-associate-agent-2-{self.agents_version}"
         )
-        agent_2_instructions = "You can invoke this agent for information and actions related to FINANCIAL ADVICE for the user and WHICH products he can obtain from the bank. Invoke this agent for Market Insights and customized recommendations for the user and the bank offerings."
         cr_associate_agent_2 = cr.AwsCustomResource(
             self,
             associate_agent_2_name,
@@ -768,7 +861,7 @@ class GenerativeAIStack(Stack):
                         "aliasArn": self.cfn_agent_alias_2.attr_agent_alias_arn
                     },
                     "collaboratorName": self.bedrock_agent_financial_assistant.agent_name,
-                    "collaborationInstruction": agent_2_instructions,
+                    "collaborationInstruction": SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2,
                     "relayConversationHistory": "TO_COLLABORATOR",
                 },
                 "physical_resource_id": cr.PhysicalResourceId.of(

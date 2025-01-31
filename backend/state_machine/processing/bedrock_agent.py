@@ -23,7 +23,9 @@ def get_ssm_parameter(parameter_name):
     return response["Parameter"]["Value"]
 
 
-def call_bedrock_agent(input_text: str) -> str:
+def call_bedrock_agent(
+    input_text: str, unique_session_id: str = "TmpBedrockSession"
+) -> str:
     # TODO: Update to use PowerTools SSM Params for optimization
     AGENT_ALIAS_ID = get_ssm_parameter(
         f"/{ENVIRONMENT}/aws-wpp/bedrock-agent-alias-id-full-string"
@@ -36,7 +38,7 @@ def call_bedrock_agent(input_text: str) -> str:
         agentId=AGENT_ID,
         enableTrace=False,
         inputText=input_text,
-        sessionId="TempSessionBedrock",
+        sessionId=unique_session_id,
     )
     logger.info(response)
 
