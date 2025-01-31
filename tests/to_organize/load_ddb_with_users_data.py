@@ -85,7 +85,7 @@ items = [
 # Load data to DynamoDB
 deployment_environment = os.environ["DEPLOYMENT_ENVIRONMENT"]
 dynamodb = boto3.resource("dynamodb")
-table = dynamodb.Table(f"multi-agent-collab-data-{deployment_environment}")
+table = dynamodb.Table(f"rufus-bank-wpp-agents-data-{deployment_environment}")
 
 for item in items:
     print(f"Loading item: {item}")
