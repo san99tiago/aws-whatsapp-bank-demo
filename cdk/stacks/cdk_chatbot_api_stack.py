@@ -9,7 +9,6 @@ from aws_cdk import (
     aws_lambda,
     aws_lambda_event_sources,
     aws_logs,
-    aws_ssm,
     aws_secretsmanager,
     aws_s3_deployment as s3d,
     aws_stepfunctions as aws_sfn,
@@ -116,6 +115,7 @@ class ChatbotAPIStack(Stack):
         self.lambda_layer_common = aws_lambda.LayerVersion(
             self,
             "Layer-Common",
+            layer_version_name=f"{self.main_resources_name}-CommonLayer-{self.deployment_environment}",
             code=aws_lambda.Code.from_asset("lambda-layers/common/modules"),
             compatible_runtimes=[
                 aws_lambda.Runtime.PYTHON_3_11,
@@ -556,7 +556,7 @@ class ChatbotAPIStack(Stack):
         self.state_machine = aws_sfn.StateMachine(
             self,
             "StateMachine-ProcessMessage",
-            state_machine_name=f"{self.main_resources_name}-process-message",
+            state_machine_name=f"{self.main_resources_name}-process-message-{self.deployment_environment}",
             state_machine_type=aws_sfn.StateMachineType.EXPRESS,
             definition_body=aws_sfn.DefinitionBody.from_chainable(
                 self.state_machine_definition,

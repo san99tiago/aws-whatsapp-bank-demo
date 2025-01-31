@@ -12,9 +12,10 @@
         "deployment_environment": "dev",
         "log_level": "DEBUG",
         "table_name": "rufus-bank-wpp-history-dev",
-        "agents_data_table_name": "rufus-bank-wpp-agents-data-dev",
         "api_gw_name": "rufus-wpp-dev",
         "secret_name": "/dev/aws-whatsapp-bank-demo",
+        "agents_data_table_name": "rufus-bank-wpp-agents-data-dev",
+        "agents_version": "v0",
         "comment": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
         "enable_rag": true,
         "meta_endpoint": "https://graph.facebook.com/"
@@ -23,9 +24,10 @@
         "deployment_environment": "prod",
         "log_level": "INFO",
         "table_name": "rufus-bank-wpp-history-prod",
-        "agents_data_table_name": "rufus-bank-wpp-agents-data-prod",
         "api_gw_name": "rufus-wpp-prod",
         "secret_name": "/prod/aws-whatsapp-bank-demo",
+        "agents_data_table_name": "rufus-bank-wpp-agents-data-prod",
+        "agents_version": "v0",
         "comment": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
         "enable_rag": true,
         "meta_endpoint": "https://graph.facebook.com/"
