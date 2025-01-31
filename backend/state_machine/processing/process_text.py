@@ -7,7 +7,7 @@ from common.enums import WhatsAppMessageTypes
 from common.logger import custom_logger
 
 # TODO: Add bedrock_agent helper
-# from state_machine.processing.bedrock_agent import call_bedrock_agent
+from state_machine.processing.bedrock_agent import call_bedrock_agent
 
 
 logger = custom_logger()
@@ -38,12 +38,14 @@ class ProcessText(BaseStepFunction):
             .get("S", "DEFAULT_RESPONSE")
         )
 
-        # TODO: Update "acnowledged" message to a more complex response
+        # # Uncomment these for troubleshooting if needed in the future :)
+        # # First step is to answer an "acnowledged" message (before a real bedrock interaction)
+        # self.response_message = (
+        #     f"Received: {self.text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        # )
+
         # TODO: Add more complex "text processing" logic here with memory and sessions...
-        # self.response_message = call_bedrock_agent(self.text)
-        self.response_message = (
-            f"Received: {self.text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        self.response_message = call_bedrock_agent(self.text)
 
         self.logger.info(f"Generated response message: {self.response_message}")
         self.logger.info("Validation finished successfully")

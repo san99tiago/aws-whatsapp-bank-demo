@@ -19,7 +19,6 @@ from aws_cdk import (
     Tags,
 )
 from constructs import Construct
-from cdklabs.generative_ai_cdk_constructs import bedrock
 
 
 class GenerativeAIStack(Stack):
@@ -60,7 +59,10 @@ class GenerativeAIStack(Stack):
         self.create_dynamodb_tables()
         self.create_lambda_layers()
         self.create_lambda_functions()
-        self.create_bedrock_components()
+        self.create_bedrock_roles()
+        self.create_rag_components()
+        self.create_bedrock_child_agents()
+        self.create_bedrock_supervisor_agent()
 
         # Generate CloudFormation outputs
         self.generate_cloudformation_outputs()
@@ -127,12 +129,13 @@ class GenerativeAIStack(Stack):
             "backend",
         )
 
-        # Lambda Function for the Bedrock Agent Group (fetch recipes)
+        # Lambda Function for the Bedrock Agent Groups
         bedrock_agent_lambda_role = aws_iam.Role(
             self,
             "BedrockAgentLambdaRole",
             assumed_by=aws_iam.ServicePrincipal("lambda.amazonaws.com"),
             description="Role for Bedrock Agent Lambda",
+            role_name=f"{self.main_resources_name}-lambda-role-action-groups",
             managed_policies=[
                 aws_iam.ManagedPolicy.from_aws_managed_policy_name(
                     "service-role/AWSLambdaBasicExecutionRole",
@@ -183,24 +186,8 @@ class GenerativeAIStack(Stack):
             role=bedrock_agent_lambda_role,
         )
 
-    def create_bedrock_components(self) -> None:
-        """
-        Method to create the Bedrock Agent for the chatbot.
-        """
-        # TODO: refactor this huge function into independent methods... and eventually custom constructs!
-
-        # Get relative path for folder that contains the kb assets
-        # ! Note--> we must obtain parent dirs to create path (that"s why there is "os.path.dirname()")
-        PATH_TO_KB_FOLDER = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "knowledge_base",
-        )
-        PATH_TO_CUSTOM_RESOURCES = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "custom_resources",
-        )
-
-        # Add permissions to the Lambda function resource policy. You use a resource-based policy to allow an AWS service to invoke your function.
+        # Add permissions to the Lambda functions resource policies.
+        # The resource-based policy is to allow an AWS service to invoke your function.
         self.lambda_action_group_crud_user_products.add_permission(
             "AllowBedrockInvoke1",
             principal=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
@@ -214,10 +201,17 @@ class GenerativeAIStack(Stack):
             source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
         )
 
-        bedrock_agent_role = aws_iam.Role(
+    def create_bedrock_roles(self) -> None:
+        """
+        Method to create the Bedrock Agent for the chatbot.
+        """
+        # TODO: refactor this huge function into independent methods... and eventually custom constructs!
+
+        self.bedrock_agent_role = aws_iam.Role(
             self,
             "BedrockAgentRole",
             assumed_by=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
+            role_name=f"{self.main_resources_name}-bedrock-agent-role",
             description="Role for Bedrock Agent",
             managed_policies=[
                 aws_iam.ManagedPolicy.from_aws_managed_policy_name(
@@ -232,16 +226,60 @@ class GenerativeAIStack(Stack):
             ],
         )
         # Add additional IAM actions for the bedrock agent
-        bedrock_agent_role.add_to_policy(
+        self.bedrock_agent_role.add_to_policy(
             aws_iam.PolicyStatement(
                 effect=aws_iam.Effect.ALLOW,
                 actions=[
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelEndpoint",
                     "bedrock:InvokeModelEndpointAsync",
+                    "iam:PassRole",
                 ],
                 resources=["*"],
             )
+        )
+
+        # Role for the Bedrock KB
+        if self.enable_rag:
+            self.bedrock_kb_role = aws_iam.Role(
+                self,
+                "IAMRole-BedrockKB",
+                role_name=f"{self.main_resources_name}-bedrock-kb-role",
+                assumed_by=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
+                managed_policies=[
+                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                        "AmazonBedrockFullAccess"
+                    ),
+                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                        "AmazonOpenSearchServiceFullAccess"
+                    ),
+                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                        "AmazonS3FullAccess"
+                    ),
+                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                        "CloudWatchLogsFullAccess"
+                    ),
+                    # TROUBLESHOOTING: Add additional permissions for the KB
+                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
+                        "AdministratorAccess"
+                    ),  # TODO: DELETE THIS LINE IN PRODUCTION
+                ],
+            )
+
+    def create_rag_components(self):
+        """
+        Method to create the RAG components for the chatbot.
+        """
+
+        # Get relative path for folder that contains the kb assets
+        # ! Note--> we must obtain parent dirs to create path (that"s why there is "os.path.dirname()")
+        PATH_TO_KB_FOLDER = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "knowledge_base",
+        )
+        PATH_TO_CUSTOM_RESOURCES = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "custom_resources",
         )
 
         # Create the S3 bucket for uploading the KB assets
@@ -306,36 +344,9 @@ class GenerativeAIStack(Stack):
                 opensearch_serverless_network_policy
             )
 
-            # Role for the Bedrock KB
-            bedrock_kb_role = aws_iam.Role(
-                self,
-                "IAMRole-BedrockKB",
-                role_name=f"{self.main_resources_name}-bedrock-kb-role",
-                assumed_by=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
-                managed_policies=[
-                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
-                        "AmazonBedrockFullAccess"
-                    ),
-                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
-                        "AmazonOpenSearchServiceFullAccess"
-                    ),
-                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
-                        "AmazonS3FullAccess"
-                    ),
-                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
-                        "CloudWatchLogsFullAccess"
-                    ),
-                    # TROUBLESHOOTING: Add additional permissions for the KB
-                    aws_iam.ManagedPolicy.from_aws_managed_policy_name(
-                        "AdministratorAccess"
-                    ),  # TODO: DELETE THIS LINE IN PRODUCTION
-                ],
-            )
-
             # Create a Custom Resource for the OpenSearch Index (not supported by CDK yet)
             # TODO: Replace to L1 or L2 construct when available!!!!!!
-            # Define the index name
-            index_name = "kb-docs"
+            index_name = f"{self.main_resources_name}-kb-docs"
 
             # Define the Lambda function that creates a new index in the opensearch serverless collection
             create_index_lambda = aws_lambda.Function(
@@ -375,7 +386,7 @@ class GenerativeAIStack(Stack):
                 self,
                 "OpenSearchServerlessAccessPolicy",
                 name=f"{self.main_resources_name}-accessp",
-                policy=f'[{{"Description":"Access for bedrock","Rules":[{{"ResourceType":"index","Resource":["index/*/*"],"Permission":["aoss:*"]}},{{"ResourceType":"collection","Resource":["collection/*"],"Permission":["aoss:*"]}}],"Principal":["{bedrock_agent_role.role_arn}","{bedrock_kb_role.role_arn}","{create_index_lambda.role.role_arn}","arn:aws:iam::{self.account}:root"]}}]',
+                policy=f'[{{"Description":"Access for bedrock","Rules":[{{"ResourceType":"index","Resource":["index/*/*"],"Permission":["aoss:*"]}},{{"ResourceType":"collection","Resource":["collection/*"],"Permission":["aoss:*"]}}],"Principal":["{self.bedrock_agent_role.role_arn}","{self.bedrock_kb_role.role_arn}","{create_index_lambda.role.role_arn}","arn:aws:iam::{self.account}:root"]}}]',
                 type="data",
                 description="Data access policy for the opensearch serverless collection",
             )
@@ -422,12 +433,12 @@ class GenerativeAIStack(Stack):
             trigger_lambda_cr.node.add_dependency(opensearch_serverless_collection)
 
             # Create the Bedrock KB
-            bedrock_knowledge_base = aws_bedrock.CfnKnowledgeBase(
+            self.bedrock_knowledge_base = aws_bedrock.CfnKnowledgeBase(
                 self,
                 "BedrockKB",
                 name="kbdocs",
                 description="Bedrock knowledge base that contains a relevant projects for the user.",
-                role_arn=bedrock_kb_role.role_arn,
+                role_arn=self.bedrock_kb_role.role_arn,
                 knowledge_base_configuration=aws_bedrock.CfnKnowledgeBase.KnowledgeBaseConfigurationProperty(
                     type="VECTOR",
                     vector_knowledge_base_configuration=aws_bedrock.CfnKnowledgeBase.VectorKnowledgeBaseConfigurationProperty(
@@ -449,15 +460,15 @@ class GenerativeAIStack(Stack):
             )
 
             # Add dependencies to the KB
-            bedrock_knowledge_base.add_dependency(opensearch_serverless_collection)
-            bedrock_knowledge_base.node.add_dependency(trigger_lambda_cr)
+            self.bedrock_knowledge_base.add_dependency(opensearch_serverless_collection)
+            self.bedrock_knowledge_base.node.add_dependency(trigger_lambda_cr)
 
             # Create the datasource for the bedrock KB
             bedrock_data_source = aws_bedrock.CfnDataSource(
                 self,
                 "Bedrock-DataSource",
                 name="KbDataSource",
-                knowledge_base_id=bedrock_knowledge_base.ref,
+                knowledge_base_id=self.bedrock_knowledge_base.ref,
                 description="The S3 data source definition for the bedrock knowledge base containing information about projects.",
                 data_source_configuration=aws_bedrock.CfnDataSource.DataSourceConfigurationProperty(
                     s3_configuration=aws_bedrock.CfnDataSource.S3DataSourceConfigurationProperty(
@@ -476,17 +487,22 @@ class GenerativeAIStack(Stack):
                 ),
             )
             # Only trigger the custom resource when the kb is completed
-            bedrock_data_source.node.add_dependency(bedrock_knowledge_base)
+            bedrock_data_source.node.add_dependency(self.bedrock_knowledge_base)
 
         # # TODO: Add the automation for the KB ingestion
         # # ... (manual for now when docs refreshed... could be automated)
+
+    def create_bedrock_child_agents(self):
+        """
+        Method to create the Bedrock Agents at the lowest hierarchy level (child agents).
+        """
 
         # Create the Bedrock Agent 1
         self.bedrock_agent_financial_products = aws_bedrock.CfnAgent(
             self,
             "BedrockAgentFinancialProductsV1",
             agent_name=f"{self.main_resources_name}-agent-financial-products-{self.agents_version}",
-            agent_resource_role_arn=bedrock_agent_role.role_arn,
+            agent_resource_role_arn=self.bedrock_agent_role.role_arn,
             description="Agent specialized in financial products. Is able to run CRUD operations towards the user products.",
             foundation_model="amazon.nova-lite-v1:0",
             # foundation_model="amazon.nova-pro-v1:0",
@@ -527,7 +543,7 @@ class GenerativeAIStack(Stack):
             self,
             "BedrockAgentFinancialAssistantV1",
             agent_name=f"{self.main_resources_name}-agent-financial-assistant-{self.agents_version}",
-            agent_resource_role_arn=bedrock_agent_role.role_arn,
+            agent_resource_role_arn=self.bedrock_agent_role.role_arn,
             description="Agent specialized in financial advise and knows the best products that the bank offers.",
             foundation_model="amazon.nova-lite-v1:0",
             # foundation_model="amazon.nova-pro-v1:0",
@@ -564,7 +580,7 @@ class GenerativeAIStack(Stack):
                     (
                         aws_bedrock.CfnAgent.AgentKnowledgeBaseProperty(
                             description="The knowledge base for the agent that contains the main BANK PRODUCTS available to be recommended.",
-                            knowledge_base_id=bedrock_knowledge_base.ref,
+                            knowledge_base_id=self.bedrock_knowledge_base.ref,
                         )
                     ),
                 ]
@@ -573,72 +589,286 @@ class GenerativeAIStack(Stack):
             ),
         )
 
-        # # TODO: Add the supervisor agent via CDK when multi-agent-collab is ready
-        # self.bedrock_agent_supervisor = aws_bedrock.CfnAgent(
-        #     self,
-        #     "BedrockAgentSupervisorV1",
-        #     agent_name=f"{self.main_resources_name}-agent-supervisor-{self.agents_version}",
-        #     agent_resource_role_arn=bedrock_agent_role.role_arn,
-        #     description="You are a specialized SUPERVISOR Agent that orchestrates the user-products-agent and the financial-assistant-agent to help the customers.",
-        #     foundation_model="amazon.nova-lite-v1:0",
-        #     # foundation_model="amazon.nova-pro-v1:0",
-        #     # foundation_model="anthropic.claude-3-5-sonnet-20240620-v1:0",
-        #     # instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the user-products-agent and the financial-assistant-agent to help the customers. Make sure that the user provides the <user_id> when asking about financial products. Always answer in the SAME language as the input.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the user-products-agent and the financial-assistant-agent to help the customers. Always answer in the SAME language as the input.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the user-products-agent (for questions related to existing user products) and the financial-assistant-agent (to help customers to get advise on their best products based on their risk profile). Always answer in the SAME language as the input.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the user-products-agent (for questions related to existing user products) and the financial-assistant-agent (to help customers to get advise on their best products based on their risk profile). If a customer asks to DETECT/INFER the risk profile, use the "user-products-agent" and choose a category, then proceed to use the "financial-assistant-agent" to share the advised products. Always answer in the SAME language as the input. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the user-products-agent (for questions related to existing user products) and the financial-assistant-agent (to help customers to get advise on their best products based on their risk profile). If a customer asks for recommded products, FIRST run the "user-products-agent" infer his risk_profile, SECOND run the "financial-assistant-agent" to find the recommended product. Always answer in the SAME language as the input. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the "user-products-agent" (for questions related to existing user products). When a customer asks for recommded products, FIRST run the "user-products-agent" and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the "financial-assistant-agent" to find the recommended product based on the risk_profile. Always answer in the SAME language as the input. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability.",
-        #     instruction="You are a specialized SUPERVISOR agent that is able to collaborate with the "user-products-agent" (for questions related to existing user products). When a customer asks for recommded products, FIRST run the "user-products-agent" and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the "financial-assistant-agent" to find the recommended product based on the risk_profile. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability. Always answer in the SAME language as the input.",
-        #     auto_prepare=True,
-        # )
-
         # Create aliases for the bedrock agents (required for multi-agent-collab setup)
-        cfn_agent_alias_1 = aws_bedrock.CfnAgentAlias(
+        self.cfn_agent_alias_1 = aws_bedrock.CfnAgentAlias(
             self,
             "BedrockAgentAlias1FinancialProducts",
             agent_alias_name=f"bedrock-agent-alias-financial-products-{self.agents_version}",
             agent_id=self.bedrock_agent_financial_products.ref,
             description="bedrock agent alias 1 (financial-products)",
         )
-        cfn_agent_alias_1.add_dependency(self.bedrock_agent_financial_products)
+        self.cfn_agent_alias_1.add_dependency(self.bedrock_agent_financial_products)
 
-        cfn_agent_alias_2 = aws_bedrock.CfnAgentAlias(
+        self.cfn_agent_alias_2 = aws_bedrock.CfnAgentAlias(
             self,
             "BedrockAgentAlias2FinancialAssistant",
             agent_alias_name=f"bedrock-agent-alias-financial-assistant-{self.agents_version}",
             agent_id=self.bedrock_agent_financial_assistant.ref,
             description="bedrock agent alias 2 (financial-assistant)",
         )
-        cfn_agent_alias_2.add_dependency(self.bedrock_agent_financial_assistant)
+        self.cfn_agent_alias_2.add_dependency(self.bedrock_agent_financial_assistant)
 
-        # # NOTE: commented until used via SDK in later projects
-        # cfn_agent_alias_supervisor = aws_bedrock.CfnAgentAlias(
-        #     self,
-        #     "BedrockAgentAliasSupervisor",
-        #     agent_alias_name="bedrock-agent-alias-supervisor",
-        #     agent_id=self.bedrock_agent_supervisor.ref,
-        #     description="bedrock agent alias (supervisor)",
-        # )
-        # cfn_agent_alias_supervisor.add_dependency(self.bedrock_agent_supervisor)
+    def create_bedrock_supervisor_agent(self):
+        """
+        Method to create the Bedrock Agents at the lowest hierarchy level (supervisor agent).
+        """
 
-        # # This string will be as <AGENT_ID>|<AGENT_ALIAS_ID>
-        # agent_alias_string = cfn_agent_alias_supervisor.ref
+        # IMPORTANT: I create the Supervisor Agent via an AWS CustomResource because we don't have
+        # ... the L1 CDK Constructs yet.  This basically uses the underlying AWS Bedrock API calls
+        # TODO: Update to CDK L1 when multi-agent collaboration is supported on CF/CDK
+        supervisor_agent_instruction = "You are a specialized SUPERVISOR agent that is able to collaborate with the 'user-products-agent' (for questions related to existing user products). When a customer asks for recommded products, FIRST run the 'user-products-agent' and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the 'financial-assistant-agent' to find the recommended product based on the risk_profile. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability. Always answer in the SAME language as the input."
+        supervisor_agent_description = "Supervisor Agent for the bank "
+        supervisor_agent_name = (
+            f"{self.main_resources_name}-create-supervisor-agent-{self.agents_version}"
+        )
+        cr_create_supervisor_agent = cr.AwsCustomResource(
+            self,
+            f"BedrockCreateSupervisorAgent{self.agents_version}",
+            function_name=supervisor_agent_name,
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+            ),
+            # policy=cr.AwsCustomResourcePolicy.from_statements(
+            #     [
+            #         aws_iam.PolicyStatement(
+            #             actions=[
+            #                 "bedrock:CreateAgent",
+            #                 "bedrock:UpdateAgent",
+            #                 "bedrock:DeleteAgent",
+            #                 "iam:PassRole",
+            #             ],
+            #             resources=["*"],
+            #         )
+            #     ]
+            # ),
+            on_create={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "CreateAgentCommand",
+                "parameters": {
+                    "agentName": supervisor_agent_name,
+                    "agentResourceRoleArn": self.bedrock_agent_role.role_arn,
+                    "description": supervisor_agent_description,
+                    "foundationModel": "amazon.nova-lite-v1:0",
+                    "instruction": supervisor_agent_instruction,
+                    "idleSessionTTLInSeconds": 1800,
+                    "agentCollaboration": "SUPERVISOR",
+                    "orchestrationType": "DEFAULT",
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(supervisor_agent_name),
+            },
+            on_update={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "UpdateAgentCommand",
+                "parameters": {
+                    "agentId": cr.PhysicalResourceId.from_response("agent.agentId"),
+                    "agentName": supervisor_agent_name,
+                    "agentResourceRoleArn": self.bedrock_agent_role.role_arn,
+                    "description": "Supervisor Agent",
+                    "foundationModel": "amazon.nova-lite-v1:0",
+                    "instruction": supervisor_agent_instruction,
+                    "idleSessionTTLInSeconds": 1800,
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(supervisor_agent_name),
+            },
+            on_delete={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "DeleteAgentCommand",
+                "parameters": {
+                    "agentId": cr.PhysicalResourceId.from_response("agent.agentId"),
+                    "skipResourceInUseCheck": True,
+                },
+            },
+        )
+        # Define IAM permission policy for the custom resource
+        cr_create_supervisor_agent.grant_principal.add_to_principal_policy(
+            aws_iam.PolicyStatement(
+                effect=aws_iam.Effect.ALLOW,
+                actions=["bedrock:*"],
+                resources=["*"],
+            )
+        )
 
-        # # Create SSM Parameters for the agent alias to use in the Lambda functions
-        # # Note: can not be added as Env-Vars due to circular dependency. Thus, SSM Params (decouple)
-        # aws_ssm.StringParameter(
-        #     self,
-        #     "SSMAgentAlias",
-        #     parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-alias-id-full-string",
-        #     string_value=agent_alias_string,
-        # )
-        # aws_ssm.StringParameter(
-        #     self,
-        #     "SSMAgentId",
-        #     parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-id",
-        #     string_value=self.bedrock_agent_supervisor.ref,
-        # )
+        # Intentionally break/skip remaining resources if Custom Resource for Supervisor Agent fails
+        if not cr_create_supervisor_agent.get_response_field("agent.agentId"):
+            print(
+                "Failed to create supervisor agent in CDK, skipping dependent resources"
+            )
+            self.supervisor_agent_id = ""
+            self.supervisor_agent_alias_id = ""
+            return
+
+        # Create the Supervisor to Child Agents associations (for the multi-agent collaboration)
+        # IMPORTANT: This is done via a Custom Resource as we don't have L1 Constructs yet.
+
+        # Associate with Agent 1 (financial-products)
+        associate_agent_1_name = (
+            f"{self.main_resources_name}-associate-agent-1-{self.agents_version}"
+        )
+        associate_agent_1_instructions = "You are a specialized SUPERVISOR agent that is able to collaborate with the <user-products-agent> (for questions related to existing user products). When a customer asks for recommended products, FIRST make sure to have <user_id> and run the <user-products-agent> and from the returned products, INFER his risk_profile, always make a choice from [CONSERVATIVE, MODERATE, RISKY], SECOND run the <financial-assistant-agent> to find the recommended product based on the risk_profile. - When a tool fetches results, always format and include them in your final response within <answer> </answer> tags. Use a clear and structured format for readability. Provide the answer in SPANISH and don't repeat question"
+        cr_associate_agent_1 = cr.AwsCustomResource(
+            self,
+            associate_agent_1_name,
+            function_name=associate_agent_1_name,
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+            ),
+            on_create={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "AssociateAgentCollaboratorCommand",
+                "parameters": {
+                    "agentId": cr_create_supervisor_agent.get_response_field(
+                        "agent.agentId"
+                    ),
+                    "agentVersion": "DRAFT",
+                    "agentDescriptor": {
+                        "aliasArn": self.cfn_agent_alias_1.attr_agent_alias_arn
+                    },
+                    "collaboratorName": self.bedrock_agent_financial_products.agent_name,
+                    "collaborationInstruction": associate_agent_1_instructions,
+                    "relayConversationHistory": "TO_COLLABORATOR",
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(
+                    associate_agent_1_name
+                ),
+            },
+        )
+        # Define IAM permission policy for the custom resource
+        cr_associate_agent_1.grant_principal.add_to_principal_policy(
+            aws_iam.PolicyStatement(
+                effect=aws_iam.Effect.ALLOW,
+                actions=["bedrock:*", "iam:PassRole"],
+                resources=["*"],
+            )
+        )
+        # Add dependencies for execution order
+        cr_associate_agent_1.node.add_dependency(cr_create_supervisor_agent)
+        cr_associate_agent_1.node.add_dependency(self.bedrock_agent_financial_products)
+
+        # Associate with Agent 2 (financial-assistant)
+        associate_agent_2_name = (
+            f"{self.main_resources_name}-associate-agent-2-{self.agents_version}"
+        )
+        agent_2_instructions = "You can invoke this agent for information and actions related to FINANCIAL ADVICE for the user and WHICH products he can obtain from the bank. Invoke this agent for Market Insights and customized recommendations for the user and the bank offerings."
+        cr_associate_agent_2 = cr.AwsCustomResource(
+            self,
+            associate_agent_2_name,
+            function_name=associate_agent_2_name,
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+            ),
+            on_create={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "AssociateAgentCollaboratorCommand",
+                "parameters": {
+                    "agentId": cr_create_supervisor_agent.get_response_field(
+                        "agent.agentId"
+                    ),
+                    "agentVersion": "DRAFT",
+                    "agentDescriptor": {
+                        "aliasArn": self.cfn_agent_alias_2.attr_agent_alias_arn
+                    },
+                    "collaboratorName": self.bedrock_agent_financial_assistant.agent_name,
+                    "collaborationInstruction": agent_2_instructions,
+                    "relayConversationHistory": "TO_COLLABORATOR",
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(
+                    associate_agent_2_name
+                ),
+            },
+        )
+        # Define IAM permission policy for the custom resource
+        cr_associate_agent_2.grant_principal.add_to_principal_policy(
+            aws_iam.PolicyStatement(
+                effect=aws_iam.Effect.ALLOW,
+                actions=["bedrock:*", "iam:PassRole"],
+                resources=["*"],
+            )
+        )
+
+        # Add dependencies for execution order
+        cr_associate_agent_2.node.add_dependency(cr_create_supervisor_agent)
+        cr_associate_agent_2.node.add_dependency(self.bedrock_agent_financial_assistant)
+
+        # Prepare Supervisor Agent (via Custom Resource, as not available yet via CF/CDK).
+        prepare_supervisor_agent_name = (
+            f"{self.main_resources_name}-prepare-supervisor-agent-{self.agents_version}"
+        )
+        cr_prepare_supervisor_agent = cr.AwsCustomResource(
+            self,
+            prepare_supervisor_agent_name,
+            policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+            ),
+            on_create={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "PrepareAgentCommand",
+                "parameters": {
+                    "agentId": cr_create_supervisor_agent.get_response_field(
+                        "agent.agentId"
+                    )
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(
+                    prepare_supervisor_agent_name
+                ),
+            },
+            on_update={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "PrepareAgentCommand",
+                "parameters": {
+                    "agentId": cr_create_supervisor_agent.get_response_field(
+                        "agent.agentId"
+                    )
+                },
+                "physical_resource_id": cr.PhysicalResourceId.of(
+                    prepare_supervisor_agent_name
+                ),
+            },
+            # TODO: Validate if delete agent makes sense here ?
+            on_delete={
+                "service": "@aws-sdk/client-bedrock-agent",
+                "action": "DeleteAgentCommand",
+                "parameters": {
+                    "agentId": cr_create_supervisor_agent.get_response_field(
+                        "agent.agentId"
+                    ),
+                    "skipResourceInUseCheck": True,
+                },
+            },
+        )
+
+        # Add dependencies for execution order
+        cr_prepare_supervisor_agent.node.add_dependency(self.cfn_agent_alias_1)
+        cr_prepare_supervisor_agent.node.add_dependency(self.cfn_agent_alias_2)
+        cr_prepare_supervisor_agent.node.add_dependency(cr_associate_agent_1)
+        cr_prepare_supervisor_agent.node.add_dependency(cr_associate_agent_2)
+
+        # Enable alias for the Supervisor Agent to be used in other applications
+        cfn_agent_alias_supervisor = aws_bedrock.CfnAgentAlias(
+            self,
+            f"BedrockAgentAliasSupervisor={self.agents_version}",
+            agent_alias_name=f"bedrock-agent-alias-supervisor-{self.agents_version}",
+            agent_id=cr_create_supervisor_agent.get_response_field("agent.agentId"),
+            description="bedrock agent alias (supervisor)",
+        )
+        cfn_agent_alias_supervisor.node.add_dependency(cr_prepare_supervisor_agent)
+
+        # This string will be as <AGENT_ID>|<AGENT_ALIAS_ID>
+        agent_alias_string = cfn_agent_alias_supervisor.ref
+
+        # Create SSM Parameters for the agent alias to use in the Lambda functions
+        # Note: can not be added as Env-Vars due to circular dependency. Thus, SSM Params (decouple)
+        aws_ssm.StringParameter(
+            self,
+            "SSMAgentAlias",
+            parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-alias-id-full-string",
+            string_value=agent_alias_string,
+        )
+        aws_ssm.StringParameter(
+            self,
+            "SSMAgentId",
+            parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-id",
+            string_value=cr_create_supervisor_agent.get_response_field("agent.agentId"),
+        )
 
     def generate_cloudformation_outputs(self) -> None:
         """
@@ -651,3 +881,5 @@ class GenerativeAIStack(Stack):
             value=self.app_config["deployment_environment"],
             description="Deployment environment",
         )
+
+        # TODO: Identify valuable outputs and add them!
