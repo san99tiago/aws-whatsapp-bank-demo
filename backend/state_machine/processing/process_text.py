@@ -60,7 +60,8 @@ class ProcessText(BaseStepFunction):
         )
 
         # TODO: Add more complex "text processing" logic here with memory and sessions...
-        self.response_message = call_bedrock_agent(self.text, phone_number)
+        self.logger.debug(f"Input message to LLM is: {str(self.text)}")
+        self.response_message = call_bedrock_agent(str(self.text), phone_number)
 
         self.logger.info(f"Generated response message: {self.response_message}")
         self.logger.info("Validation finished successfully")

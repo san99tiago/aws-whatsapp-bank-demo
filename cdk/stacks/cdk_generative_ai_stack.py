@@ -23,13 +23,14 @@ from constructs import Construct
 
 
 # Global settings and setup
+# FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-lite-v1:0"
 # FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-haiku-20240307-v1:0"
 # FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-5-haiku-20241022-v1:0"
-# FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-pro-v1:0"
+# FOUNDATION_MODEL_CHILD_AGENTS = "amazon.nova-lite-v1:0"
 
 # Foundation Model Configurations
-FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-lite-v1:0"
-FOUNDATION_MODEL_CHILD_AGENTS = "amazon.nova-lite-v1:0"
+FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-pro-v1:0"
+FOUNDATION_MODEL_CHILD_AGENTS = "amazon.nova-pro-v1:0"
 
 # Supervisor Agent Instructions
 SUPERVISOR_AGENT_INSTRUCTION = """
@@ -43,8 +44,8 @@ Responsibilities:
     - Route the request to the 'user-products-agent'.
     - Obtain the 'from_number' from the user's input.
 
-2. For PRODUCT RECOMMENDATIONS:
-    - Request user product information from the 'user-products-agent' using the <user_id>.
+2. For PRODUCT RECOMMENDATIONS or INVESTMENT QUESTIONS:
+    - Request user product information from the 'user-products-agent' using the <from_number>.
     - Determine the user's RISK_PROFILE based on their products or input:
         Options: [CONSERVATIVE, MODERATE, RISKY].
     - Pass the RISK_PROFILE to the 'financial-assistant-agent' for tailored recommendations.
@@ -52,8 +53,9 @@ Responsibilities:
 3. General Rules:
     - Format responses within <answer></answer> tags.
     - Do NOT include RISK_PROFILE details unless explicitly requested by the user.
-    - Respond in the SAME language as the input.
-    - If the request is unclear, politely ask for clarification.
+    - Respond in the SAME language as the input. If Spanish, format in UTF-8.
+    - If the request is unclear, or missing data, ask for clarification.
+    - NEVER share the chain of thought to the user, only the response, and if unclear, ask again.
 """
 
 # Child Agents Instructions
@@ -62,9 +64,10 @@ You are the 'user-products-agent', specialized in retrieving and providing infor
 existing bank products.
 
 Key Responsibilities:
-- Retrieve user product information only if a valid <user_id> is provided.
+- Retrieve user product information only if a valid <from_number> is provided.
+- Obtain the <from_number> from the user input.
 - Respond strictly with the requested product details—no additional commentary or analysis.
-- Use the <GenerateCertificates> tool for certificate-related requests. Obtain the <from_number> from the user input.
+- Use the <GenerateCertificates> tool for certificate-related requests.
 - Politely ask for clarification if the request is unclear.
 - Always respond in the SAME language as the input.
 """
@@ -83,14 +86,16 @@ Key Responsibilities:
 3. Cross-reference the insights with the Rufus Bank Investment Products document to recommend suitable products.
 
 4. Ensure recommendations are:
-    - Aligned with the user's <user_id> and RISK_PROFILE.
+    - Aligned with the user's <from_number> and RISK_PROFILE.
     - Clear, actionable, and in the SAME language as the input.
+    - Always answer recommended products ONLY, not the chain of thought.
+    - Example: <Based on your risk profile, I recommend you to invest in these Rufus products: A, B, C>
 """
 
 # Supervisor Specific Instructions for Agents
 SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = """
 Use the 'user-products-agent' to retrieve details about the user's existing bank products or to generate 
-certificates. Always require a <user_id> for accurate data retrieval. For product recommendations, first 
+certificates. Always the <from_number> for accurate data retrieval. For product recommendations, first 
 gather product details using this agent, then pass the data to the 'financial-assistant-agent'.
 """
 
@@ -673,7 +678,7 @@ class GenerativeAIStack(Stack):
             action_groups=[
                 aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="FetchUserProducts",
-                    description="A function that is able to fetch the user products from the database from an input user_id and from_number.",
+                    description="A function that is able to fetch the user products from the database from an input from_number and from_number.",
                     action_group_executor=aws_bedrock.CfnAgent.ActionGroupExecutorProperty(
                         lambda_=self.lambda_action_group_crud_user_products.function_arn,
                     ),
@@ -682,11 +687,11 @@ class GenerativeAIStack(Stack):
                             aws_bedrock.CfnAgent.FunctionProperty(
                                 name="FetchUserProducts",
                                 # the properties below are optional
-                                description="Function to fetch the user products based on the input input user_id",
+                                description="Function to fetch the user products based on the input input from_number",
                                 parameters={
-                                    "user_id": aws_bedrock.CfnAgent.ParameterDetailProperty(
+                                    "from_number": aws_bedrock.CfnAgent.ParameterDetailProperty(
                                         type="string",
-                                        description="user_id to fetch the user products",
+                                        description="from_number to fetch the user products",
                                         required=True,
                                     ),
                                 },
@@ -696,7 +701,7 @@ class GenerativeAIStack(Stack):
                 ),
                 aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="GenerateCertificates",
-                    description="A function that is able to generate the user certificates from an input user_id and from_number.",
+                    description="A function that is able to generate the user certificates from an input from_number.",
                     action_group_executor=aws_bedrock.CfnAgent.ActionGroupExecutorProperty(
                         lambda_=self.lambda_action_group_generate_certificates.function_arn,
                     ),
@@ -705,13 +710,8 @@ class GenerativeAIStack(Stack):
                             aws_bedrock.CfnAgent.FunctionProperty(
                                 name="GenerateCertificates",
                                 # the properties below are optional
-                                description="Function to generate user certificates based on the input input user_id",
+                                description="Function to generate user certificates based on the input from_number",
                                 parameters={
-                                    "user_id": aws_bedrock.CfnAgent.ParameterDetailProperty(
-                                        type="string",
-                                        description="user_id to generate user certificates",
-                                        required=True,
-                                    ),
                                     "from_number": aws_bedrock.CfnAgent.ParameterDetailProperty(
                                         type="string",
                                         description="from_number to generate user certificates",
@@ -1042,13 +1042,13 @@ class GenerativeAIStack(Stack):
         aws_ssm.StringParameter(
             self,
             "SSMAgentAlias",
-            parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-alias-id-full-string",
+            parameter_name=f"/{self.deployment_environment}/rufus-bank/bedrock-agent-alias-id-full-string",
             string_value=agent_alias_string,
         )
         aws_ssm.StringParameter(
             self,
             "SSMAgentId",
-            parameter_name=f"/{self.deployment_environment}/aws-wpp/bedrock-agent-id",
+            parameter_name=f"/{self.deployment_environment}/rufus-bank/bedrock-agent-id",
             string_value=cr_create_supervisor_agent.get_response_field("agent.agentId"),
         )
 

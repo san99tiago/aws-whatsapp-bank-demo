@@ -9,19 +9,19 @@ items = [
         "PK": "MARKET#CONSERVATIVE",
         "SK": "ADVICE#LATEST#",
         "advice": "Invest in low-risk products",
-        "products_list": "CDT or FIC-CONSERVADOR",
+        "products_list": "RUFUS-CDT or RUFUS-FIC-CONSERVADOR",
     },
     {
         "PK": "MARKET#MODERATE",
         "SK": "ADVICE#LATEST#",
         "advice": "Invest in medium-risk products",
-        "products_list": "CDT or FIC-MODERADO",
+        "products_list": "RUFUS-CDT or RUFUS-FIC-MODERADO",
     },
     {
         "PK": "MARKET#RISKY",
         "SK": "ADVICE#LATEST#",
         "advice": "Invest in high-risk products",
-        "products_list": "FIC-RIESGO or MGC",
+        "products_list": "RUFUS-FIC-RIESGO or RUFUS-MGC",
     },
 ]
 

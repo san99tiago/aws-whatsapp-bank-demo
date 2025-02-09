@@ -17,8 +17,8 @@ def action_group_fetch_user_products(parameters):
     # Extract user_id from parameters
     user_id = None
     for param in parameters:
-        if param["name"] == "user_id":
-            user_id = param["value"]
+        if param["name"] == "from_number":
+            user_id = param["value"]  # User ID is also the from_number for now...
 
     all_user_products = dynamodb_helper.query_by_pk_and_sk_begins_with(
         partition_key=f"USER#{user_id}",

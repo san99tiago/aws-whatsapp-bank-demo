@@ -28,10 +28,10 @@ def call_bedrock_agent(
 ) -> str:
     # TODO: Update to use PowerTools SSM Params for optimization
     AGENT_ALIAS_ID = get_ssm_parameter(
-        f"/{ENVIRONMENT}/aws-wpp/bedrock-agent-alias-id-full-string"
+        f"/{ENVIRONMENT}/rufus-bank/bedrock-agent-alias-id-full-string"
     )
     AGENT_ALIAS_ID = AGENT_ALIAS_ID.split("|")[-1]
-    AGENT_ID = get_ssm_parameter(f"/{ENVIRONMENT}/aws-wpp/bedrock-agent-id")
+    AGENT_ID = get_ssm_parameter(f"/{ENVIRONMENT}/rufus-bank/bedrock-agent-id")
 
     response = bedrock_agent_runtime_client.invoke_agent(
         agentAliasId=AGENT_ALIAS_ID,

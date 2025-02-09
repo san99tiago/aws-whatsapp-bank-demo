@@ -3,29 +3,33 @@ import os, boto3
 
 # TODO: Replace the items with your own data... Parametrize this script... Improve it...
 
+# IMPORTANT: Replace these with your own phones!!!
+PHONE_NUMBER_1 = "REPLACE_ME_WITH_YOUR_PHONE_NUMBER"
+PHONE_NUMBER_2 = "REPLACE_ME_WITH_BUSINESS_PHONE_NUMBER"
+
 items = [
     # LOAD DEMO USER PROFILES...
     {
-        "PK": "USER#santi123",
+        "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PROFILE#",
-        "first_name": "Santi123",
+        "first_name": f"{PHONE_NUMBER_1}",
         "last_name": "Garci",
-        "email": "santi123@example.com",
+        "email": "santigarci@example.com",
         "phone_number": "+1234567890",
         "address": "123 Main St, Anytown, COL",
     },
     {
-        "PK": "USER#dani456",
+        "PK": f"USER#{PHONE_NUMBER_2}",
         "SK": "PROFILE#",
-        "first_name": "Moni",
+        "first_name": "Rufus",
         "last_name": "Hill",
-        "email": "moni@example.com",
+        "email": "rufushill@example.com",
         "phone_number": "+9876543210",
         "address": "456 Abc St, Othertown, COL",
     },
     # LOAD DEMO USER PRODUCTS...
     {
-        "PK": "USER#santi123",
+        "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PRODUCT#01",
         "product_name": "Credit Card",
         "last_digits": "1111",
@@ -33,7 +37,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#santi123",
+        "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PRODUCT#02",
         "product_name": "Credit Card",
         "last_digits": "2222",
@@ -41,7 +45,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#santi123",
+        "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PRODUCT#03",
         "product_name": "Bank Account",
         "last_digits": "3333",
@@ -49,7 +53,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#santi123",
+        "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PRODUCT#04",
         "product_name": "Bank Account",
         "last_digits": "4444",
@@ -57,7 +61,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#dani456",
+        "PK": f"USER#{PHONE_NUMBER_2}",
         "SK": "PRODUCT#01",
         "product_name": "LOW-RISK-FUND",
         "last_digits": "7777",
@@ -65,7 +69,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#dani456",
+        "PK": f"USER#{PHONE_NUMBER_2}",
         "SK": "PRODUCT#02",
         "product_name": "CDT",
         "last_digits": "8888",
@@ -73,7 +77,7 @@ items = [
         "status": "ACTIVE",
     },
     {
-        "PK": "USER#dani456",
+        "PK": f"USER#{PHONE_NUMBER_2}",
         "SK": "PRODUCT#03",
         "product_name": "Bank Account",
         "last_digits": "9999",

@@ -412,6 +412,12 @@ class ChatbotAPIStack(Stack):
             ),
             output_path="$.Payload",
         )
+        # Add retry configuration (default behavior has all errors are retried)
+        self.task_process_text.add_retry(
+            max_attempts=4,  # Retry up to 4 times
+            interval=Duration.seconds(10),  # Wait 2 seconds between retries
+            backoff_rate=2.0,  # Exponential backoff multiplier
+        )
 
         self.task_process_voice = aws_sfn_tasks.LambdaInvoke(
             self,
