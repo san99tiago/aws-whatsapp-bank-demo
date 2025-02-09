@@ -8,6 +8,7 @@ In order to correctly configure the Meta Developer settings and projects (only o
 
    - https://business.facebook.com
    - https://youtu.be/CEt_KMMv3V8?list=PLX_K_BlBdZKi4GOFmJ9_67og7pMzm2vXH
+   - https://youtu.be/VDlyGcHlGiw
 
 2. Create an App:
 

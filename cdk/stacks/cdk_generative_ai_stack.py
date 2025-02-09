@@ -12,6 +12,7 @@ from aws_cdk import (
     aws_ssm,
     aws_s3,
     aws_s3_deployment as s3d,
+    aws_secretsmanager,
     custom_resources as cr,
     CfnOutput,
     RemovalPolicy,
@@ -24,98 +25,79 @@ from constructs import Construct
 # Global settings and setup
 # FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-haiku-20240307-v1:0"
 # FOUNDATION_MODEL_CHILD_AGENTS = "anthropic.claude-3-5-haiku-20241022-v1:0"
+# FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-pro-v1:0"
 
-FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-pro-v1:0"
+# Foundation Model Configurations
+FOUNDATION_MODEL_SUPERVISOR_AGENT = "amazon.nova-lite-v1:0"
 FOUNDATION_MODEL_CHILD_AGENTS = "amazon.nova-lite-v1:0"
-AGENT_1_INSTRUCTION = (
-    "You are the 'user-products-agent', specialized in retrieving and providing information about the user's existing bank products. "
-    "If the user requests details about their products, ensure they provide the <user_id> parameter to retrieve all relevant bank products. "
-    "Your response must strictly contain the requested user product details. Do not provide any additional information or analysis. "
-    "Always respond in the SAME language as the input, maintaining clear and concise communication."
-)
 
-AGENT_2_INSTRUCTION = (
-    "You are the 'financial-assistant-agent', specialized in providing personalized financial advice and product recommendations. "
-    "To deliver advice, you must: "
-    "1. Infer the user's RISK_PROFILE based on their existing products or directly from user input. Use only [CONSERVATIVE, MODERATE, RISKY] as valid options, converting similar terms to these canonical forms. "
-    "2. Fetch Market Insights using the <FetchMarketInsights> tool and integrate the RISK_PROFILE. "
-    "3. Cross-reference the results with the <RUFUS BANK INVESTMENT PRODUCTS> document to recommend the most suitable products or actions for the user. "
-    "Your recommendations must align with the user's <user_id> and <RISK_PROFILE>. Always provide advice tailored to their profile and preferences. "
-    "Ensure responses are in the SAME language as the input, clear, and actionable."
-)
+# Supervisor Agent Instructions
+SUPERVISOR_AGENT_INSTRUCTION = """
+You are 'Ruffy', the supervisor agent for Rufus Bank, orchestrating interactions between specialized agents 
+to provide the best user experience.
 
-SUPERVISOR_AGENT_INSTRUCTION = (
-    "You are 'Ruffy', the supervisor agent for Rufus Bank, orchestrating interactions between specialized agents to provide the best user experience. "
-    "Introduce yourself with: 'Hi, I am Ruffy, your bank assistant for Rufus Bank. How can I help you today?' "
-    "- For questions about EXISTING PRODUCTS, route the request to the 'user-products-agent'. "
-    "- For PRODUCT RECOMMENDATIONS (any question about recommended products), follow this process: "
-    "  1. Request user product information from the 'user-products-agent' using the <user_id>. "
-    "  2. From the returned products, infer the user's RISK_PROFILE (choose from [CONSERVATIVE, MODERATE, RISKY]). "
-    "  3. Execute the 'financial-assistant-agent' to find recommended products based on the RISK_PROFILE. "
-    "- Always format fetched results clearly, embedding them within <answer></answer> tags. "
-    "- NEVER include RISK_PROFILE information in responses unless the user explicitly requests product recommendations. "
-    "- Provide structured, detailed answers while maintaining the SAME language as the input. "
-    "- If the user's request is not clear or cannot be understood, politely ask for clarification. "
-)
+Introduce yourself with: 'Hi, I am Ruffy, your bank assistant for Rufus Bank. How can I help you today?'
 
-SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = (
-    "Invoke the 'user-products-agent' to retrieve details about the user's existing bank products. "
-    "Ensure the user provides the <user_id> for accurate retrieval. "
-    "When the task involves product recommendations, first use this agent to gather user product information, then proceed to infer the RISK_PROFILE and consult the 'financial-assistant-agent'."
-)
+Responsibilities:
+1. For questions about EXISTING PRODUCTS or certificates:
+    - Route the request to the 'user-products-agent'.
+    - Obtain the 'from_number' from the user's input.
 
-SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2 = (
-    "Invoke the 'financial-assistant-agent' for any tasks involving Market Insights or customized financial recommendations. "
-    "Ensure these recommendations align with the user's RISK_PROFILE and bank product offerings."
-)
+2. For PRODUCT RECOMMENDATIONS:
+    - Request user product information from the 'user-products-agent' using the <user_id>.
+    - Determine the user's RISK_PROFILE based on their products or input:
+        Options: [CONSERVATIVE, MODERATE, RISKY].
+    - Pass the RISK_PROFILE to the 'financial-assistant-agent' for tailored recommendations.
 
+3. General Rules:
+    - Format responses within <answer></answer> tags.
+    - Do NOT include RISK_PROFILE details unless explicitly requested by the user.
+    - Respond in the SAME language as the input.
+    - If the request is unclear, politely ask for clarification.
+"""
 
-# AGENT_1_INSTRUCTION = (
-#     "You are the 'user-products-agent' (v1.0). You specialize in retrieving and providing information about the user's existing bank products. "
-#     "Your message format is: {'agent': 'user-products-agent', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
-#     "Actions:"
-#     "  - 'get_products': Retrieve user product details. Parameters: {'user_id': '<user_id>'}. Result: A JSON array of product objects. Each object has fields like 'product_id', 'product_name', 'balance', 'interest_rate', etc.  Example: `[{'product_id': '1', 'product_name': 'Checking Account', ...}, ...]`"
-#     "  - If the 'user_id' is missing or invalid, return {'status': 'error', 'result': 'Invalid user_id'}. "
-#     "Respond in the language specified by the 'language' parameter."
-# )
+# Child Agents Instructions
+AGENT_1_INSTRUCTION = """
+You are the 'user-products-agent', specialized in retrieving and providing information about the user's 
+existing bank products.
 
-# AGENT_2_INSTRUCTION = (
-#     "You are the 'financial-assistant-agent' (v1.0). You specialize in providing personalized financial advice and product recommendations. "
-#     "Your message format is: {'agent': 'financial-assistant-agent', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
-#     "Actions:"
-#     "  - 'get_recommendations': Provide product recommendations. Parameters: {'user_id': '<user_id>', 'risk_profile': '<risk_profile>'}. Result: A JSON array of recommended product objects, including 'product_id', 'product_name', 'description', 'reason', etc. Example: `[{'product_id': '3', 'product_name': 'High-Yield Savings', ...}, ...]`"
-#     "  - 'get_market_insights': Retrieve market insights. Parameters: {'risk_profile': '<risk_profile>'}. Result: A JSON object containing relevant market data. Example: `{'stock_market_trend': 'up', 'interest_rates': 'low', ...}`.  "
-#     "  - You MUST call 'get_market_insights' before 'get_recommendations'."
-#     "  - If the 'risk_profile' is not one of [CONSERVATIVE, MODERATE, RISKY], return {'status': 'error', 'result': 'Invalid risk_profile'}. "
-#     "Respond in the language specified by the 'language' parameter."
-# )
+Key Responsibilities:
+- Retrieve user product information only if a valid <user_id> is provided.
+- Respond strictly with the requested product details—no additional commentary or analysis.
+- Use the <GenerateCertificates> tool for certificate-related requests. Obtain the <from_number> from the user input.
+- Politely ask for clarification if the request is unclear.
+- Always respond in the SAME language as the input.
+"""
 
-# SUPERVISOR_AGENT_INSTRUCTION = (
-#     "You are 'Ruffy', the supervisor agent for Rufus Bank (v1.1). All communication uses JSON format. Your message format is: {'agent': 'ruffy', 'action': '<action_name>', 'parameters': {}, 'result': {}, 'status': 'success'/'error', 'language': '<language_code>'}. "
-#     "Workflow:"
-#     "1. Greet user: {'action': 'greet', 'result': 'Hi, I am Ruffy...'}."
-#     "2. Handle requests:"
-#     "   - 'get_products': {'action': 'get_products', 'parameters': {'user_id': '<user_id>'}, 'result': <product_info_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'user-products-agent'."
-#     "   - 'recommend_products':"
-#     "       a. Get user products: {'action': 'get_products', 'parameters': {'user_id': '<user_id>'}, 'result': <product_info_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'user-products-agent'."
-#     "       b. Infer risk profile: {'action': 'infer_risk_profile', 'parameters': {'products': <product_info_json>}, 'result': {'risk_profile': 'CONSERVATIVE'/'MODERATE'/'RISKY'}, 'status': 'success'/'error', 'language': '<language_code>'}."  # Use rules to infer from product portfolio.
-#     "       c. Get market insights: {'action': 'get_market_insights', 'parameters': {'risk_profile': <risk_profile>}, 'result': <market_insights_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
-#     "       d. Get recommendations: {'action': 'get_recommendations', 'parameters': {'user_id': '<user_id>', 'risk_profile': '<risk_profile>'}, 'result': <recommendations_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
-#     "   - 'get_market_insights': {'action': 'get_market_insights', 'parameters': {'risk_profile': '<risk_profile>'}, 'result': <market_insights_json>, 'status': 'success'/'error', 'language': '<language_code>'} - Route to 'financial-assistant-agent'."
-#     "3. Handle errors: If an agent returns {'status': 'error'}, log the error and inform the user. For example: {'action': 'error', 'parameters': {'message': 'Failed to retrieve products'}, 'result': 'Sorry, there was an error processing your request.', 'status': 'error', 'language': '<language_code>'}."
-#     "4. Clarification: If the user request is unclear, ask clarifying questions:  {'action': 'clarification', 'result': 'Could you please clarify your request?'}."
-#     "5. Logging: Log all agent interactions, including messages, parameters, results, and errors.  This is crucial for debugging and monitoring the system."
-#     "6. Risk Profile Inference Rules (Example):"
-#     "   - If more than 50% of products are low-risk (e.g., savings accounts, CDs), risk_profile = CONSERVATIVE."
-#     "   - If more than 50% are moderate-risk (e.g., balanced mutual funds), risk_profile = MODERATE."
-#     "   - If more than 50% are high-risk (e.g., stocks, options), risk_profile = RISKY."
-#     "   - If no clear majority, risk_profile = MODERATE (default)."
-#     "Always respond in the language specified by the 'language' parameter."
-# )
+AGENT_2_INSTRUCTION = """
+You are the 'financial-assistant-agent', specialized in providing personalized financial advice and product 
+recommendations.
 
-# SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = "Invoke the 'user-products-agent' to retrieve details about the user's existing bank products using the 'get_products' action. Ensure you provide the <user_id>. When the task involves product recommendations, first use this agent to gather user product information, then proceed to infer the RISK_PROFILE."
+Key Responsibilities:
+1. Determine the user's RISK_PROFILE:
+    - Based on their products or input.
+    - Convert similar terms to [CONSERVATIVE, MODERATE, RISKY].
 
-# SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2 = "Invoke the 'financial-assistant-agent' for any tasks involving Market Insights or customized financial recommendations using the 'get_recommendations' or 'get_market_insights' actions. Ensure these recommendations align with the user's RISK_PROFILE and bank product offerings."
+2. Use the <FetchMarketInsights> tool to gather market data aligned with the user's RISK_PROFILE.
+
+3. Cross-reference the insights with the Rufus Bank Investment Products document to recommend suitable products.
+
+4. Ensure recommendations are:
+    - Aligned with the user's <user_id> and RISK_PROFILE.
+    - Clear, actionable, and in the SAME language as the input.
+"""
+
+# Supervisor Specific Instructions for Agents
+SUPERVISOR_INSTRUCTIONS_FOR_AGENT_1 = """
+Use the 'user-products-agent' to retrieve details about the user's existing bank products or to generate 
+certificates. Always require a <user_id> for accurate data retrieval. For product recommendations, first 
+gather product details using this agent, then pass the data to the 'financial-assistant-agent'.
+"""
+
+SUPERVISOR_INSTRUCTIONS_FOR_AGENT_2 = """
+Use the 'financial-assistant-agent' for tasks involving market insights or personalized financial advice. 
+Ensure that recommendations align with the user's RISK_PROFILE and bank product offerings.
+"""
 
 
 class GenerativeAIStack(Stack):
@@ -153,7 +135,9 @@ class GenerativeAIStack(Stack):
         self.enable_rag = self.app_config["enable_rag"]
 
         # Main methods for the deployment
+        self.import_secrets()
         self.create_dynamodb_tables()
+        self.create_s3_buckets()
         self.create_lambda_layers()
         self.create_lambda_functions()
         self.create_bedrock_roles()
@@ -163,6 +147,16 @@ class GenerativeAIStack(Stack):
 
         # Generate CloudFormation outputs
         self.generate_cloudformation_outputs()
+
+    def import_secrets(self) -> None:
+        """
+        Method to import the AWS Secrets for the Lambda Functions.
+        """
+        self.secret_chatbot = aws_secretsmanager.Secret.from_secret_name_v2(
+            self,
+            "Secret-Whatsapp",
+            secret_name=self.app_config["secret_name"],
+        )
 
     def create_dynamodb_tables(self):
         """
@@ -189,6 +183,23 @@ class GenerativeAIStack(Stack):
             "Name", self.app_config["agents_data_table_name"]
         )
 
+    def create_s3_buckets(self) -> None:
+        """
+        Create S3 buckets for the Generative-AI Assets.
+        """
+        self.bucket_additional_assets = aws_s3.Bucket(
+            self,
+            "S3-Bucket-ExtraAssets",
+            bucket_name=f"{self.main_resources_name}-extra-assets-{self.account}",
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            enforce_ssl=True,
+            block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
+        )
+        Tags.of(self.bucket_additional_assets).add(
+            "Name", f"{self.main_resources_name}-rag"
+        )
+
     def create_lambda_layers(self) -> None:
         """
         Create the Lambda layers that are necessary for the additional runtime
@@ -200,6 +211,13 @@ class GenerativeAIStack(Stack):
             self,
             "Layer-PowerTools",
             layer_version_arn=f"arn:aws:lambda:{self.region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python311-x86_64:5",
+        )
+
+        # Layer for "Pillow" (for image generation, etc)
+        self.lambda_layer_pillow = aws_lambda.LayerVersion.from_layer_version_arn(
+            self,
+            "Layer-Pillow",
+            layer_version_arn=f"arn:aws:lambda:{self.region}:770693421928:layer:Klayers-p311-Pillow:7",
         )
 
         # Layer for "common" Python requirements (fastapi, mangum, pydantic, ...)
@@ -261,8 +279,41 @@ class GenerativeAIStack(Stack):
                 "LOG_LEVEL": self.app_config["log_level"],
                 "TABLE_NAME": self.app_config["agents_data_table_name"],
             },
-            layers=[self.lambda_layer_powertools],
+            layers=[
+                self.lambda_layer_common,
+                self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
+            ],
             role=bedrock_agent_lambda_role,
+        )
+
+        self.lambda_action_group_generate_certificates = aws_lambda.Function(
+            self,
+            "Lambda-AG-GenerateCertificates",
+            runtime=aws_lambda.Runtime.PYTHON_3_11,
+            handler="agents/bank_certificates/lambda_function.lambda_handler",
+            function_name=f"{self.main_resources_name}-bedrock-action-group-generate-certificates",
+            code=aws_lambda.Code.from_asset(PATH_TO_LAMBDA_FUNCTION_FOLDER),
+            timeout=Duration.seconds(60),
+            memory_size=512,
+            environment={
+                "ENVIRONMENT": self.app_config["deployment_environment"],
+                "LOG_LEVEL": self.app_config["log_level"],
+                "TABLE_NAME": self.app_config["agents_data_table_name"],
+                "BUCKET_NAME": self.bucket_additional_assets.bucket_name,
+                "SECRET_NAME": self.app_config["secret_name"],
+                "META_ENDPOINT": self.app_config["meta_endpoint"],
+            },
+            layers=[
+                self.lambda_layer_common,
+                self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
+            ],
+            role=bedrock_agent_lambda_role,
+        )
+        self.secret_chatbot.grant_read(self.lambda_action_group_generate_certificates)
+        self.bucket_additional_assets.grant_read_write(
+            self.lambda_action_group_generate_certificates
         )
 
         self.lambda_action_group_market_insights = aws_lambda.Function(
@@ -279,7 +330,11 @@ class GenerativeAIStack(Stack):
                 "LOG_LEVEL": self.app_config["log_level"],
                 "TABLE_NAME": self.app_config["agents_data_table_name"],
             },
-            layers=[self.lambda_layer_powertools],
+            layers=[
+                self.lambda_layer_common,
+                self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
+            ],
             role=bedrock_agent_lambda_role,
         )
 
@@ -287,6 +342,12 @@ class GenerativeAIStack(Stack):
         # The resource-based policy is to allow an AWS service to invoke your function.
         self.lambda_action_group_crud_user_products.add_permission(
             "AllowBedrockInvoke1",
+            principal=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
+            action="lambda:InvokeFunction",
+            source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
+        )
+        self.lambda_action_group_generate_certificates.add_permission(
+            "AllowBedrockInvoke1B",
             principal=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
             action="lambda:InvokeFunction",
             source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
@@ -612,7 +673,7 @@ class GenerativeAIStack(Stack):
             action_groups=[
                 aws_bedrock.CfnAgent.AgentActionGroupProperty(
                     action_group_name="FetchUserProducts",
-                    description="A function that is able to fetch the user products from the database from an input user_id.",
+                    description="A function that is able to fetch the user products from the database from an input user_id and from_number.",
                     action_group_executor=aws_bedrock.CfnAgent.ActionGroupExecutorProperty(
                         lambda_=self.lambda_action_group_crud_user_products.function_arn,
                     ),
@@ -626,6 +687,34 @@ class GenerativeAIStack(Stack):
                                     "user_id": aws_bedrock.CfnAgent.ParameterDetailProperty(
                                         type="string",
                                         description="user_id to fetch the user products",
+                                        required=True,
+                                    ),
+                                },
+                            )
+                        ]
+                    ),
+                ),
+                aws_bedrock.CfnAgent.AgentActionGroupProperty(
+                    action_group_name="GenerateCertificates",
+                    description="A function that is able to generate the user certificates from an input user_id and from_number.",
+                    action_group_executor=aws_bedrock.CfnAgent.ActionGroupExecutorProperty(
+                        lambda_=self.lambda_action_group_generate_certificates.function_arn,
+                    ),
+                    function_schema=aws_bedrock.CfnAgent.FunctionSchemaProperty(
+                        functions=[
+                            aws_bedrock.CfnAgent.FunctionProperty(
+                                name="GenerateCertificates",
+                                # the properties below are optional
+                                description="Function to generate user certificates based on the input input user_id",
+                                parameters={
+                                    "user_id": aws_bedrock.CfnAgent.ParameterDetailProperty(
+                                        type="string",
+                                        description="user_id to generate user certificates",
+                                        required=True,
+                                    ),
+                                    "from_number": aws_bedrock.CfnAgent.ParameterDetailProperty(
+                                        type="string",
+                                        description="from_number to generate user certificates",
                                         required=True,
                                     ),
                                 },

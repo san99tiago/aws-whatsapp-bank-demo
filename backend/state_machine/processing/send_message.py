@@ -44,7 +44,7 @@ class SendMessage(BaseStepFunction):
 
         # Initialize the Meta API
         meta_api = MetaAPI(logger=self.logger)
-        response = meta_api.post_message(
+        response = meta_api.post_text_message(
             text_message=text_message,
             to_phone_number=phone_number,
             original_message_id=original_message_id,

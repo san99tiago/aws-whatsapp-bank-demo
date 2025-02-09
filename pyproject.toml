@@ -32,7 +32,7 @@ qrcode = "^8.0"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-pythonpath = ["cdk", "backend"]
+pythonpath = ["backend", "cdk"]
 
 [build-system]
 requires = ["poetry-core"]

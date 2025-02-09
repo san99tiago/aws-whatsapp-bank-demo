@@ -52,6 +52,13 @@ class ProcessText(BaseStepFunction):
         #     f"Received: {self.text} at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         # )
 
+        # Add extra params to the text input
+        self.text = (
+            f"input: {self.text}\n"
+            f"from_number: {phone_number}\n"
+            f"Please answer in the same language as the user.\n"
+        )
+
         # TODO: Add more complex "text processing" logic here with memory and sessions...
         self.response_message = call_bedrock_agent(self.text, phone_number)
 

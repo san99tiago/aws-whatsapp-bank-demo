@@ -15,7 +15,10 @@ from state_machine.integrations.meta.api_utils import (
     get_api_endpoint,
     get_api_headers,
 )
-from state_machine.integrations.meta.schemas import MetaPostMessageModel
+from state_machine.integrations.meta.schemas import (
+    MetaPostTextMessageModel,
+    MetaPostDocumentMessageModel,
+)
 
 
 SECRET_NAME = os.environ["SECRET_NAME"]
@@ -45,7 +48,7 @@ class MetaAPI:
         self.api_headers = get_api_headers(bearer_token=auth_token)
         self.api_endpoint = get_api_endpoint(f"{_meta_from_phone_number_id}/messages")
 
-    def post_message(
+    def post_text_message(
         self,
         text_message: str,
         to_phone_number: str,
@@ -64,9 +67,59 @@ class MetaAPI:
         self.logger.debug(f"text_message to send: {text_message}")
 
         # Create response model for the POST request (JSON data)
-        message_data_model = MetaPostMessageModel(
+        message_data_model = MetaPostTextMessageModel(
             to=to_phone_number,
             text={"body": text_message},
+            context=(
+                {"message_id": original_message_id} if original_message_id else None
+            ),
+        )
+
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                headers=self.api_headers,
+                # json=message_data_model.model_dump(),
+                json=json.loads(
+                    message_data_model.json()
+                ),  # TODO: update to model_dump()
+            )
+        except Exception as e:
+            self.logger.exception(
+                "Unexpected error occurred while executing Meta API request."
+            )
+            raise e
+
+        self.logger.info(f"Response has status_code: {response.status_code}")
+        self.logger.info(f"Response data: {response.text}")
+        return response.json()
+
+    def post_document_message(
+        self,
+        document_url: str,
+        to_phone_number: str,
+        original_message_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Method to send a POST message request to the Meta API.
+
+        :param document_url (str): document_url to send in the POST request.
+        :param to_phone_number (str): Phone number to send the message to.
+        :param original_message_id (str): Original message ID to reply to.
+        """
+
+        self.logger.info(f"Starting POST request to Meta API: {self.api_endpoint}")
+        self.logger.debug(f"Headers to send: {self.api_headers}")
+        self.logger.debug(f"document_url to send: {document_url}")
+
+        # Create response model for the POST request (JSON data)
+        message_data_model = MetaPostDocumentMessageModel(
+            to=to_phone_number,
+            document={
+                "link": document_url,
+                "caption": "Rufus Certificate",
+                "filename": "Rufus_Bank_Certificate.pdf",
+            },
             context=(
                 {"message_id": original_message_id} if original_message_id else None
             ),

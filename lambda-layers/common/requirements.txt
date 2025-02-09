@@ -7,3 +7,4 @@ pydantic_core
 requests==2.32.3
 fpdf2==2.8.2
 qrcode==8.0
+# Pillow==11.1.0 # Used a custom layer instead...

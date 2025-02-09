@@ -105,9 +105,11 @@ def generate_certificate_pdf(product_list, location=LOCATION, output_path="/tmp"
 
     # Save the PDF
     os.makedirs(output_path, exist_ok=True)
-    output_file = os.path.join(output_path, "certificate.pdf")
+    output_file = os.path.join(output_path, "rufus_certificate.pdf")
     pdf.output(output_file)
     logger.info(f"Successfully saved PDF file to {output_file}")
+
+    return output_file
 
 
 # Only for local tests/validations
