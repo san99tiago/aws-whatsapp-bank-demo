@@ -5,3 +5,5 @@ mangum==0.17.0
 pydantic
 pydantic_core
 requests==2.32.3
+fpdf2==2.8.2
+qrcode==8.0
