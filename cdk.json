@@ -13,14 +13,14 @@
         "log_level": "DEBUG",
         "table_name": "rufus-bank-wpp-history-dev",
         "table_name_auth_sessions": "rufus-bank-auth-sessions-dev",
-        "enable_auth": true,
+        "enable_auth": "false",
         "api_gw_name": "rufus-wpp-dev",
         "secret_name": "/dev/aws-whatsapp-bank-demo",
         "agents_data_table_name": "rufus-bank-wpp-agents-data-dev",
         "comment_1": "IMPORTANT: Bedrock Agents APIs are new. When doing major changes please intentionally switch the version to enforce recreation. Example: v0 to v1",
         "agents_version": "v0",
         "comment_2": "Update the <enable_rag> to <true> in case that support for RAG with PDFs is required. Warning: could be expensive.",
-        "enable_rag": "true",
+        "enable_rag": false,
         "meta_endpoint": "https://graph.facebook.com/"
       },
       "prod": {
