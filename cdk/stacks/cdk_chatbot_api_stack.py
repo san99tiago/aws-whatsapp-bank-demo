@@ -108,6 +108,7 @@ class ChatbotAPIStack(Stack):
             sort_key=aws_dynamodb.Attribute(
                 name="SK", type=aws_dynamodb.AttributeType.STRING
             ),
+            stream=aws_dynamodb.StreamViewType.NEW_IMAGE,
             billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
             time_to_live_attribute="ttl",
@@ -199,6 +200,30 @@ class ChatbotAPIStack(Stack):
             ],
         )
 
+        # Lambda Function for receiving the messages from DynamoDB Streams
+        # ... and send back message to user as soon as authenticated
+        self.lambda_trigger_auth_ok = aws_lambda.Function(
+            self,
+            "Lambda-Trigger-Auth-Successful",
+            runtime=aws_lambda.Runtime.PYTHON_3_11,
+            handler="trigger/trigger_handler_auth_successful.lambda_handler",
+            function_name=f"{self.main_resources_name}-trigger-auth-successful",
+            code=aws_lambda.Code.from_asset(PATH_TO_LAMBDA_FUNCTION_FOLDER),
+            timeout=Duration.seconds(20),
+            memory_size=512,
+            environment={
+                "ENVIRONMENT": self.app_config["deployment_environment"],
+                "LOG_LEVEL": self.app_config["log_level"],
+                "SECRET_NAME": self.app_config["secret_name"],
+                "META_ENDPOINT": self.app_config["meta_endpoint"],
+            },
+            layers=[
+                self.lambda_layer_powertools,
+                self.lambda_layer_common,
+            ],
+        )
+        self.secret_chatbot.grant_read(self.lambda_trigger_auth_ok)
+
         # Lambda Function that will run the State Machine steps for processing the messages
         # TODO: In the future, can be migrated to MULTIPLE Lambda Functions for each step...
         self.lambda_state_machine_process_message = aws_lambda.Function(
@@ -289,6 +314,16 @@ class ChatbotAPIStack(Stack):
         self.lambda_trigger_state_machine.add_event_source(
             aws_lambda_event_sources.DynamoEventSource(
                 self.dynamodb_table,
+                starting_position=aws_lambda.StartingPosition.TRIM_HORIZON,
+                batch_size=1,
+            )
+        )
+
+        # Stream the DynamoDB Auth Sessions Streams to the Lambda Function for...
+        # ... acknowledging the user as soon as authenticated
+        self.lambda_trigger_auth_ok.add_event_source(
+            aws_lambda_event_sources.DynamoEventSource(
+                self.dynamodb_table_auth_sessions,
                 starting_position=aws_lambda.StartingPosition.TRIM_HORIZON,
                 batch_size=1,
             )
