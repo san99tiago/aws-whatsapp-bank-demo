@@ -3,20 +3,16 @@ import os
 
 
 # Local Imports
-from state_machine.base_step_function import BaseStepFunction
 from common.enums import WhatsAppMessageTypes
 from common.logger import custom_logger
-
-
 from common.helpers.dynamodb_helper import DynamoDBHelper
+from state_machine.base_step_function import BaseStepFunction
+from state_machine.integrations.meta.api_requests import MetaAPI
 
 
-TABLE_NAME = os.environ[
-    "TABLE_NAME_AUTH_SESSIONS"
-]  # Mandatory to pass table name as env var
+TABLE_NAME = os.environ.get("TABLE_NAME_AUTH_SESSIONS")
 
 logger = custom_logger()
-dynamodb_helper = DynamoDBHelper(table_name=TABLE_NAME)
 
 
 ALLOWED_MESSAGE_TYPES = [member.value for member in WhatsAppMessageTypes]
@@ -30,6 +26,9 @@ class ValidateMessage(BaseStepFunction):
 
     def __init__(self, event):
         super().__init__(event, logger=logger)
+
+        # TODO: Validate if migrating the helper init outside class is relevant
+        self.dynamodb_helper = DynamoDBHelper(table_name=TABLE_NAME)
 
     def validate_input(self):
         """
@@ -70,22 +69,43 @@ class ValidateMessage(BaseStepFunction):
             )
 
             # Check if active session in DynamoDB
-            result = dynamodb_helper.get_item_by_pk_and_sk(
+            result = self.dynamodb_helper.get_item_by_pk_and_sk(
                 partition_key=f"USER#{phone_number}",
                 sort_key="AUTH",
             )
 
-            if not result:
+            if result:
+                logger.info(
+                    f"User {phone_number} authenticated correctly with active session"
+                )
+            else:
                 logger.warning(f"User {phone_number} NOT authenticated")
                 self.message_type = "unauthorized"
                 self.event["response_message"] = (
-                    "Hi there, you need to authenticate. \nPlease visit: - https://rufus-auth.san99tiago.com"  # Enforce user auth if ENV VAR ENABLED
+                    "Buenos días! Gracias por comunicarte con Rufus Bank.\n Para proceder, debes autenticarte: - https://rufus-auth.san99tiago.com"  # Enforce user auth if ENV VAR ENABLED
                 )
-            logger.info(
-                f"User {phone_number} authenticated correctly with active session"
-            )
 
         self.logger.info("Validation finished successfully")
+
+        # Add acknowledge message (received) for better user experience
+        # Initialize the Meta API
+        meta_api = MetaAPI(logger=self.logger)
+        response = meta_api.post_text_message(
+            text_message="Ruffy recibió tu mensaje (procesando)...",
+            to_phone_number=phone_number,
+        )
+
+        self.logger.debug(
+            response,
+            message_details="POST WhatsApp Message Meta API Response",
+        )
+
+        if "error" in response:
+            self.logger.error(
+                response,
+                message_details="Error in POST WhatsApp Message Meta API Response",
+            )
+            raise Exception("Error in POST WhatsApp Message Meta API Response")
 
         # Add relevant data fields for traceability in the next State Machine steps
         self.event["correlation_id"] = self.correlation_id

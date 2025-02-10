@@ -437,8 +437,8 @@ class ChatbotAPIStack(Stack):
         )
         # Add retry configuration (default behavior has all errors are retried)
         self.task_process_text.add_retry(
-            max_attempts=4,  # Retry up to 4 times
-            interval=Duration.seconds(10),  # Wait 2 seconds between retries
+            max_attempts=5,  # Retry up to 5 times (Bedrock has as of now errors eventually)
+            interval=Duration.seconds(1),  # Wait 1 seconds between retries
             backoff_rate=2.0,  # Exponential backoff multiplier
         )
 

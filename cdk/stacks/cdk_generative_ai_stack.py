@@ -40,15 +40,17 @@ to provide the best user experience.
 Introduce yourself with: 'Hi, I am Ruffy, your bank assistant for Rufus Bank. How can I help you today?'
 
 Responsibilities:
-1. For questions about EXISTING PRODUCTS or certificates:
+0. If user is saying hi, proceed to introduce yourself as Ruffy.
+
+1. For questions about EXISTING PRODUCTS or CERTIFICATES or REWARDS-POINTS:
     - Route the request to the 'user-products-agent'.
     - Obtain the 'from_number' from the user's input.
 
-2. For PRODUCT RECOMMENDATIONS or INVESTMENT QUESTIONS:
+2. For questions about PRODUCT RECOMMENDATIONS or INVESTMENT PRODUCTS or INVESTMENT RECOMMENDATIONS:
     - Request user product information from the 'user-products-agent' using the <from_number>.
-    - Determine the user's RISK_PROFILE based on their products or input:
-        Options: [CONSERVATIVE, MODERATE, RISKY].
-    - Pass the RISK_PROFILE to the 'financial-assistant-agent' for tailored recommendations.
+    - Randomly choose the risk profile [CONSERVATIVE, MODERATE, RISKY].
+    - Pass the RISK_PROFILE to the 'financial-assistant-agent' for recommendations.
+    - ONLY answer the response, NOT the thought process. Example: <Based on your risk profile, I suggest you to look these Rufus products: A, B, C>
 
 3. General Rules:
     - Format responses within <answer></answer> tags.
@@ -61,13 +63,15 @@ Responsibilities:
 # Child Agents Instructions
 AGENT_1_INSTRUCTION = """
 You are the 'user-products-agent', specialized in retrieving and providing information about the user's 
-existing bank products.
+existing bank products or certificates or rewards.
 
 Key Responsibilities:
 - Retrieve user product information only if a valid <from_number> is provided.
 - Obtain the <from_number> from the user input.
 - Respond strictly with the requested product details—no additional commentary or analysis.
+- Use the <FetchMarketInsights> tool for retrieving the user products.
 - Use the <GenerateCertificates> tool for certificate-related requests.
+- Use the <GetBankRewards> tool for points or rewards-related requests.
 - Politely ask for clarification if the request is unclear.
 - Always respond in the SAME language as the input.
 """
@@ -321,6 +325,34 @@ class GenerativeAIStack(Stack):
             self.lambda_action_group_generate_certificates
         )
 
+        self.lambda_action_group_get_bank_rewards = aws_lambda.Function(
+            self,
+            "Lambda-AG-GetBankRewards",
+            runtime=aws_lambda.Runtime.PYTHON_3_11,
+            handler="agents/bank_rewards/lambda_function.lambda_handler",
+            function_name=f"{self.main_resources_name}-bedrock-action-group-get-bank-rewards",
+            code=aws_lambda.Code.from_asset(PATH_TO_LAMBDA_FUNCTION_FOLDER),
+            timeout=Duration.seconds(60),
+            memory_size=512,
+            environment={
+                "ENVIRONMENT": self.app_config["deployment_environment"],
+                "LOG_LEVEL": self.app_config["log_level"],
+                "TABLE_NAME": self.app_config["agents_data_table_name"],
+                "BUCKET_NAME": self.bucket_additional_assets.bucket_name,
+                "SECRET_NAME": self.app_config["secret_name"],
+            },
+            layers=[
+                self.lambda_layer_common,
+                self.lambda_layer_powertools,
+                self.lambda_layer_pillow,
+            ],
+            role=bedrock_agent_lambda_role,
+        )
+        self.secret_chatbot.grant_read(self.lambda_action_group_get_bank_rewards)
+        self.bucket_additional_assets.grant_read_write(
+            self.lambda_action_group_get_bank_rewards
+        )
+
         self.lambda_action_group_market_insights = aws_lambda.Function(
             self,
             "Lambda-AG-MarketInsights",
@@ -353,6 +385,12 @@ class GenerativeAIStack(Stack):
         )
         self.lambda_action_group_generate_certificates.add_permission(
             "AllowBedrockInvoke1B",
+            principal=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
+            action="lambda:InvokeFunction",
+            source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
+        )
+        self.lambda_action_group_get_bank_rewards.add_permission(
+            "AllowBedrockInvoke1C",
             principal=aws_iam.ServicePrincipal("bedrock.amazonaws.com"),
             action="lambda:InvokeFunction",
             source_arn=f"arn:aws:bedrock:{self.region}:{self.account}:agent/*",
@@ -666,7 +704,7 @@ class GenerativeAIStack(Stack):
             "BedrockAgentFinancialProductsV1",
             agent_name=f"{self.main_resources_name}-agent-financial-products-{self.agents_version}",
             agent_resource_role_arn=self.bedrock_agent_role.role_arn,
-            description="Agent specialized in financial products. Is able to run CRUD operations towards the user products and generate PDF certificates.",
+            description="Agent specialized in financial products. Is able to run CRUD operations towards the user products, generate PDF certificates and get bank rewards for an user.",
             # foundation_model="amazon.nova-lite-v1:0",
             # foundation_model="amazon.nova-pro-v1:0",
             # foundation_model="anthropic.claude-3-haiku-20240307-v1:0",
@@ -715,6 +753,29 @@ class GenerativeAIStack(Stack):
                                     "from_number": aws_bedrock.CfnAgent.ParameterDetailProperty(
                                         type="string",
                                         description="from_number to generate user certificates",
+                                        required=True,
+                                    ),
+                                },
+                            )
+                        ]
+                    ),
+                ),
+                aws_bedrock.CfnAgent.AgentActionGroupProperty(
+                    action_group_name="GetBankRewards",
+                    description="A function that is able to get bank rewards from an input from_number.",
+                    action_group_executor=aws_bedrock.CfnAgent.ActionGroupExecutorProperty(
+                        lambda_=self.lambda_action_group_get_bank_rewards.function_arn,
+                    ),
+                    function_schema=aws_bedrock.CfnAgent.FunctionSchemaProperty(
+                        functions=[
+                            aws_bedrock.CfnAgent.FunctionProperty(
+                                name="GetBankRewards",
+                                # the properties below are optional
+                                description="Function to get bank rewards based on the input from_number",
+                                parameters={
+                                    "from_number": aws_bedrock.CfnAgent.ParameterDetailProperty(
+                                        type="string",
+                                        description="from_number to get bank rewards",
                                         required=True,
                                     ),
                                 },

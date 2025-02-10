@@ -75,7 +75,10 @@ def lambda_handler(event, context):
     logger.info(f"ACTION GROUP IS: {action_group}")
 
     # TODO: enhance this If-Statement approach to a dynamic one...
-    if action_group == "GenerateCertificates":
+    if (
+        action_group == "GenerateCertificates"
+        or action_group == "<GenerateCertificates>"
+    ):
         results = action_group_generate_certificates(parameters)
     else:
         raise ValueError(f"Action Group <{action_group}> not supported.")
