@@ -98,6 +98,24 @@ class ChatbotAPIStack(Stack):
         )
         Tags.of(self.dynamodb_table).add("Name", self.app_config["table_name"])
 
+        self.dynamodb_table_auth_sessions = aws_dynamodb.Table(
+            self,
+            "DynamoDB-Table-AuthSessions",
+            table_name=self.app_config["table_name_auth_sessions"],
+            partition_key=aws_dynamodb.Attribute(
+                name="PK", type=aws_dynamodb.AttributeType.STRING
+            ),
+            sort_key=aws_dynamodb.Attribute(
+                name="SK", type=aws_dynamodb.AttributeType.STRING
+            ),
+            billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+            time_to_live_attribute="ttl",
+        )
+        Tags.of(self.dynamodb_table_auth_sessions).add(
+            "Name", self.app_config["table_name_auth_sessions"]
+        )
+
     def create_lambda_layers(self) -> None:
         """
         Create the Lambda layers that are necessary for the additional runtime
@@ -197,6 +215,8 @@ class ChatbotAPIStack(Stack):
                 "LOG_LEVEL": self.app_config["log_level"],
                 "SECRET_NAME": self.app_config["secret_name"],
                 "META_ENDPOINT": self.app_config["meta_endpoint"],
+                "TABLE_NAME_AUTH_SESSIONS": self.app_config["table_name_auth_sessions"],
+                "AUTH_ENABLED": self.app_config["enable_auth"],
             },
             layers=[
                 self.lambda_layer_powertools,
@@ -205,6 +225,9 @@ class ChatbotAPIStack(Stack):
         )
         self.secret_chatbot.grant_read(self.lambda_state_machine_process_message)
         self.dynamodb_table.grant_read_write_data(
+            self.lambda_state_machine_process_message
+        )
+        self.dynamodb_table_auth_sessions.grant_read_write_data(
             self.lambda_state_machine_process_message
         )
         self.lambda_state_machine_process_message.role.add_managed_policy(
@@ -516,6 +539,9 @@ class ChatbotAPIStack(Stack):
         self.choice_image = aws_sfn.Condition.string_equals("$.message_type", "image")
         self.choice_video = aws_sfn.Condition.string_equals("$.message_type", "video")
         self.choice_voice = aws_sfn.Condition.string_equals("$.message_type", "voice")
+        self.choice_unauthorized = aws_sfn.Condition.string_equals(
+            "$.message_type", "unauthorized"
+        )
 
         # State Machine event type initial configuration entrypoints
         self.state_machine_definition = self.task_validate_message.next(
@@ -524,6 +550,7 @@ class ChatbotAPIStack(Stack):
             .when(self.choice_voice, self.task_pass_voice)
             .when(self.choice_image, self.task_pass_image)
             .when(self.choice_video, self.task_pass_video)
+            .when(self.choice_unauthorized, self.task_send_message)
         )
 
         # Pass States entrypoints
