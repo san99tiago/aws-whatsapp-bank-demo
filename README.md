@@ -2,16 +2,23 @@
 
 Multi-layered Enterprise WhatsApp Chatbot solution designed for a demo Bank, leveraging AWS's advanced Generative AI capabilities. <br>
 
-> WORK IN PROGRESS!!!!
+- Biometric authentication portal with React + Amplify + Cognito + S3 + Rekognition Liveness.
+- WhatsApp Chatbot enabled via a WebHook on top of API-GW + Lambda + DynamoDB (with EDA approach).
+- Multi-Agent Collaboration with Bedrock and Nova Pro V1 (2 Generative-AI Agents).
+- Infrastructure as Code with Cloud Development Kit (CDK-Python) and 3 Stacks.
 
 ## Architecture
 
-<img src="assets/2025_01_21_RufusBank_Architecture_v3_overview.png" width=90%> <br>
+<img src="assets/2025_02_11_rufus_bank_architecture_v3.png" width=90%> <br>
 
 ## Manual Steps (Only Once)
 
 - [WhatsApp Manual Configuration](./docs/WHATSAPP_CONFIGURATION.md)
 - [AWS Configuration](./docs/AWS_CONFIGURATION.md)
+
+## DEMO - TODO!!!
+
+TODO: Add demo!!!
 
 ## Author 🎹
 
