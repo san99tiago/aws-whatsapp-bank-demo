@@ -34,6 +34,10 @@ def call_bedrock_agent(
     AGENT_ALIAS_ID = AGENT_ALIAS_ID.split("|")[-1]
     AGENT_ID = get_ssm_parameter(f"/{ENVIRONMENT}/rufus-bank/bedrock-agent-id")
 
+    # Always generate a new UUID (temp validations)
+    unique_session_id = str(uuid.uuid4())
+    logger.debug(f"Generated new UUID for session: {unique_session_id}")
+
     response = bedrock_agent_runtime_client.invoke_agent(
         agentAliasId=AGENT_ALIAS_ID,
         agentId=AGENT_ID,
@@ -41,7 +45,7 @@ def call_bedrock_agent(
         inputText=input_text,
         # TODO: Validate best approach/performance...
         # sessionId=unique_session_id,  # Session id to cross-reference history
-        sessionId=str(uuid.uuid4()),  # Intentionally always create a new chat!!
+        sessionId=unique_session_id,  # Intentionally always create a new chat!!
     )
     logger.info(response)
 
