@@ -54,9 +54,11 @@ class ProcessText(BaseStepFunction):
 
         # Add extra params to the text input
         self.text = (
+            f"<REQUEST>"
             f"input: {self.text}\n"
             f"from_number: {phone_number}\n"
-            f"Please answer in the same language as the user.\n"
+            f"Answer in same language as input. Use UTF-8 format."
+            f"</REQUEST>"
         )
 
         # TODO: Add more complex "text processing" logic here with memory and sessions...

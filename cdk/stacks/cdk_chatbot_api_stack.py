@@ -10,7 +10,6 @@ from aws_cdk import (
     aws_lambda_event_sources,
     aws_logs,
     aws_secretsmanager,
-    aws_s3_deployment as s3d,
     aws_stepfunctions as aws_sfn,
     aws_stepfunctions_tasks as aws_sfn_tasks,
     aws_apigateway as aws_apigw,
@@ -509,6 +508,12 @@ class ChatbotAPIStack(Stack):
                 }
             ),
             output_path="$.Payload",
+        )
+        # Add retry configuration (default behavior has all errors are retried)
+        self.task_send_message.add_retry(
+            max_attempts=5,  # Retry up to 5 times (Bedrock has as of now errors eventually)
+            interval=Duration.seconds(1),  # Wait 1 seconds between retries
+            backoff_rate=2.0,  # Exponential backoff multiplier
         )
 
         self.task_not_implemented = aws_sfn.Pass(

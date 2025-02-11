@@ -1,6 +1,7 @@
 # Built-in imports
 import os
 import boto3
+import uuid
 
 # Own imports
 from common.logger import custom_logger
@@ -38,7 +39,9 @@ def call_bedrock_agent(
         agentId=AGENT_ID,
         enableTrace=False,
         inputText=input_text,
-        sessionId=unique_session_id,
+        # TODO: Validate best approach/performance...
+        # sessionId=unique_session_id,  # Session id to cross-reference history
+        sessionId=str(uuid.uuid4()),  # Intentionally always create a new chat!!
     )
     logger.info(response)
 

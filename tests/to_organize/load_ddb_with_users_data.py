@@ -12,7 +12,7 @@ items = [
     {
         "PK": f"USER#{PHONE_NUMBER_1}",
         "SK": "PROFILE#",
-        "first_name": f"santi",
+        "first_name": "santi",
         "last_name": "garcia",
         "email": "santigarcia@example.com",
         "phone_number": f"{PHONE_NUMBER_1}",

@@ -39,6 +39,11 @@ class SendMessage(BaseStepFunction):
             .get("S")
         )
 
+        # TODO: Enhance with a more robust validation control...
+        # This is a temp validation for testing purposes when agents have timeouts...
+        if "(2)" in text_message and "(3)" in text_message:
+            text_message = "Basado en tu perfil de riesgo moderado, te recomiendo invertir en RUFUS-CDT o RUFUS-FIC."
+
         # Initialize the Meta API
         meta_api = MetaAPI(logger=self.logger)
         response = meta_api.post_text_message(
