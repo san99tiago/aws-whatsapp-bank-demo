@@ -62,8 +62,20 @@ class ProcessText(BaseStepFunction):
         )
 
         # TODO: Add more complex "text processing" logic here with memory and sessions...
-        self.logger.debug(f"Input message to LLM is: {str(self.text)}")
-        self.response_message = call_bedrock_agent(str(self.text), phone_number)
+        self.logger.info(f"Input message to LLM is: {str(self.text)}")
+        total_retries = 4
+        retries = 0
+
+        while retries < total_retries:
+            self.response_message = call_bedrock_agent(str(self.text), phone_number)
+            if self.response_message:  # Check if response is not empty
+                break
+            retries += 1
+            if retries < total_retries:
+                self.logger.info(f"Retrying... Attempt {retries + 1}/{total_retries}")
+            else:
+                self.logger.info("Maximum retries reached. No valid response received.")
+                self.response_message = "Rufus Bank tuvo un pequeño ruffy-problema. Por favor repite el mensaje..."
 
         self.logger.info(f"Generated response message: {self.response_message}")
         self.logger.info("Validation finished successfully")
