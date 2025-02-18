@@ -18,9 +18,7 @@ Multi-layered Enterprise WhatsApp Chatbot solution designed for a demo Bank, lev
 
 ## DEMO
 
-<img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART1.gif" width=33%>
-<img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART2.gif" width=33%>
-<img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART3.gif" width=33%>
+<img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART1.gif" width=33%><img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART2.gif" width=33%><img src="assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot_PART3.gif" width=33%>
 
 [Demo video](./assets/2025_02_11_RufusBank_Demo_MultiAgentChatbot.mp4)
 
